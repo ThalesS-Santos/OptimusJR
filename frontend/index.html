@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>OptimusJR - Sistema EJ</title>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div class="container">
+      <!-- Auth Views -->
+      <div id="auth-view" style="display: flex; justify-content: center; align-items: center; min-height: 80vh;">
+        <div class="auth-container" style="text-align: center;">
+          <img src="logo.png" alt="Optimus JR" class="auth-logo">
+          <h1>🔐 Acesso Restrito</h1>
+          <p style="color: var(--text-muted); margin-bottom: 2rem;">Entre com sua conta Google Institucional</p>
+          
+          <button onclick="window.loginWithGoogle()" style="display: flex; align-items: center; justify-content: center; gap: 1rem; background: white; color: #333;">
+            <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" width="20" alt="">
+            Entrar com Google
+          </button>
+          
+          <div id="auth-error" class="alert alert-error hidden" style="margin-top: 1rem;"></div>
+        </div>
+      </div>
+
+      <!-- Dashboard View -->
+      <div id="dashboard-view" class="hidden dashboard-layout">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <img src="logo.png" alt="Logo" class="sidebar-logo">
+            </div>
+            <nav class="sidebar-nav">
+                <button onclick="navTo('home')" class="nav-item active">🏠 Dashboards</button>
+                <button onclick="navTo('membros')" class="nav-item">👥 Membros</button>
+                <button onclick="navTo('historia')" class="nav-item">📜 História</button>
+                <button onclick="navTo('economia')" class="nav-item">💰 Economia</button>
+                <button onclick="navTo('gastos')" class="nav-item">💸 Gastos</button>
+                <button onclick="navTo('projetos')" class="nav-item">🚀 Projetos</button>
+                <div style="flex:1;"></div>
+                <button onclick="navTo('perfil')" class="nav-item">👤 Meu Perfil</button>
+            </nav>
+            <div class="sidebar-footer">
+                <button onclick="window.logout()" class="logout-btn-sidebar">🚪 Sair</button>
+            </div>
+        </aside>
+
+        <!-- Main Content Wrapper -->
+        <div class="main-content">
+            <header class="dashboard-header top-bar">
+                <div>
+                   <h2 id="page-title" style="font-size: 1.8rem; color: white;">Dashboard</h2>
+                </div>
+                <div class="user-profile-widget" id="user-profile-widget">
+                    <div style="text-align: right;">
+                        <span id="user-greeting" style="display:block; font-weight:bold;">Usuário</span>
+                        <small id="user-role-dept" style="color: var(--text-muted)">Cargo</small>
+                    </div>
+                </div>
+            </header>
+
+            <main id="dashboard-content">
+                <!-- Dynamic Content Loaded via JS -->
+            </main>
+        </div>
+      </div>
+    </div>
+    <script type="module" src="app.js"></script>
+  </body>
+</html>
