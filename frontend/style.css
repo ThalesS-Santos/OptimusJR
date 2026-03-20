@@ -311,7 +311,121 @@ button:hover {
 
 /* Responsive */
 @media (max-width: 768px) {
+    .dashboard-layout {
+        position: relative;
+        flex-direction: column; /* Evita quebrar layout fixed se houver scroll */
+    }
+
+    /* Sidebar que desliza */
     .sidebar {
-        display: none; /* For now, hide on mobile or implement hamburger */
+        position: fixed;
+        left: -260px; /* Escondido */
+        top: 0;
+        bottom: 0;
+        height: 100vh;
+        width: 250px;
+        transition: left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        box-shadow: 5px 0 25px rgba(0,0,0,0.5);
+    }
+
+    .sidebar.open {
+        left: 0;
+    }
+
+    /* Overlay escuro */
+    .sidebar-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.6);
+        backdrop-filter: blur(4px);
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.3s ease;
+        z-index: 9;
+    }
+
+    .sidebar-overlay.active {
+        opacity: 1;
+        pointer-events: auto;
+    }
+
+    /* Botão Hambúrguer */
+    #mobile-menu-btn {
+        display: block !important;
+        color: white;
+    }
+
+    .main-content {
+        padding: 1rem;
+        height: 100vh; /* Garante scroll interno se sidebar for fixa */
+    }
+
+    .top-bar {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 1rem;
+    }
+
+    .user-profile-widget {
+        width: 100%;
+        justify-content: flex-end;
+    }
+
+    /* --- Tabelas Responsivas Estilo Card --- */
+    table, thead, tbody, th, td, tr {
+        display: block;
+    }
+
+    /* Esconde o cabeçalho tradicional */
+    thead tr {
+        position: absolute;
+        top: -9999px;
+        left: -9999px;
+    }
+
+    tr {
+        margin-bottom: 1rem;
+        background: rgba(255, 255, 255, 0.02);
+        border: 1px solid rgba(255, 255, 255, 0.05);
+        border-radius: 12px;
+        padding: 0.8rem;
+    }
+
+    td {
+        border: none !important;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.04) !important;
+        position: relative;
+        padding: 0.8rem 0.5rem 0.8rem 45% !important; /* Espaço para o label */
+        text-align: right;
+        display: flex;
+        justify-content: flex-end;
+        align-items: center;
+        min-height: 3.5rem;
+    }
+
+    td:last-child {
+        border-bottom: none !important;
+    }
+
+    /* Insere o nome da coluna via data-label */
+    td::before {
+        content: attr(data-label);
+        position: absolute;
+        left: 1.2rem;
+        width: 40%;
+        white-space: nowrap;
+        text-align: left;
+        font-weight: 600;
+        color: var(--text-muted);
+        font-size: 0.85rem;
+    }
+
+    td[data-label="Membro"] {
+        justify-content: flex-end;
+    }
+
+    /* Formulários em flex que precisam colapsar */
+    form div {
+        flex-direction: column !important;
     }
 }
