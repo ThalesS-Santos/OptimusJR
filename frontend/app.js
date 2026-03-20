@@ -243,8 +243,8 @@ async function loadContent() {
         case 'membros': await renderMembros(container); break;
         case 'projetos': await renderProjetos(container); break;
         case 'historia': renderHistoria(container); break;
-        case 'economia': await renderEconomia(container); break;
-        case 'gastos': await renderGastos(container); break;
+        case 'financas': await renderFinancas(container); break;
+        case 'comercial': await renderComercial(container); break;
         default: container.innerHTML = '<div class="card">Página não encontrada</div>';
     }
 }
@@ -252,15 +252,142 @@ async function loadContent() {
 // --- PAGES ---
 
 async function renderHome(container) {
-    document.getElementById('page-title').innerText = 'Dashboard Principal';
+    document.getElementById('page-title').innerText = 'Dashboard Gerencial';
     if (!currentUser) return;
-    
-    if (currentUser.role === 'Presidente') {
-        container.innerHTML = `<div class="card"><h3>🏛️ Visão da Presidência</h3><p>Bem-vindo, Chefe.</p></div>`;
-    } else if (currentUser.role === 'Diretor') {
-        container.innerHTML = `<div class="card"><h3>📈 Visão da Diretoria (${currentUser.dept})</h3><p>Gerencie sua equipe.</p></div>`;
-    } else {
-        container.innerHTML = `<div class="card"><h3>👋 Bem-vindo ao Sistema</h3><p>Acompanhe suas tarefas.</p></div>`;
+
+    container.innerHTML = `<div style="text-align:center; padding:2rem; color:var(--text-muted)">📊 Carregando métricas e análises...</div>`;
+
+    try {
+        const [txsResult, projsResult, usersResult] = await Promise.all([
+            supabase.from('transactions').select('*'),
+            supabase.from('projects').select('*'),
+            supabase.from('users').select('*')
+        ]);
+
+        const txs = txsResult.data || [];
+        const projects = projsResult.data || [];
+        const members = usersResult.data || [];
+
+        // Cálculos e KPIs
+        const now = new Date();
+        const currentMonth = now.getMonth();
+        const currentYear = now.getFullYear();
+
+        const currentMonthTxs = txs.filter(t => {
+            const date = new Date(t.date);
+            return date.getMonth() === currentMonth && date.getFullYear() === currentYear;
+        });
+
+        const revCurrent = currentMonthTxs.filter(t => t.type === 'Receita').reduce((sum, t) => sum + Number(t.amount), 0);
+        const expCurrent = currentMonthTxs.filter(t => t.type === 'Despesa').reduce((sum, t) => sum + Number(t.amount), 0);
+        const profitCurrent = revCurrent - expCurrent;
+
+        // Comparativo Mês Passado
+        const prevMonth = currentMonth === 0 ? 11 : currentMonth - 1;
+        const prevYear = currentMonth === 0 ? currentYear - 1 : currentYear;
+        const prevMonthTxs = txs.filter(t => {
+            const date = new Date(t.date);
+            return date.getMonth() === prevMonth && date.getFullYear() === prevYear;
+        });
+        const revPrev = prevMonthTxs.filter(t => t.type === 'Receita').reduce((sum, t) => sum + Number(t.amount), 0);
+        const revVar = revPrev > 0 ? ((revCurrent - revPrev) / revPrev) * 100 : 0;
+
+        const activeProjs = projects.filter(p => p.status === 'Em Execução' || p.status === 'Planejamento').length;
+        const doneProjs = projects.filter(p => p.status === 'Concluído').length;
+        const ticketMedio = projects.length > 0 ? (txs.filter(t => t.type === 'Receita').reduce((s,t) => s + Number(t.amount), 0) / projects.length) : 0;
+
+        container.innerHTML = `
+            <div style="display: flex; justify-content: flex-end; margin-bottom: 1.5rem;">
+                <button onclick="window.openReportModal()" style="width: auto; background: #3b82f6; border: none; font-weight: bold; display: flex; align-items: center; gap: 0.5rem; padding: 0.8rem 1.5rem;"><span style="font-size: 1.2rem;">📊</span> Gerar Relatório de Desempenho</button>
+            </div>
+
+            <!-- OKRs / Metas -->
+            <div class="okrs-container">
+                <div class="okr-card">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <span style="font-weight: 600; color: #fff;">🎯 Faturamento Semestral</span>
+                        <small style="color: #6b7280; font-weight: bold;">0%</small>
+                    </div>
+                    <div class="progress-container">
+                        <div class="progress-bar-fill" style="width: 0%;"></div>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; font-size: 0.8rem; color: var(--text-muted);">
+                        <span>Alcançado: R$ 0,00</span>
+                        <span>Meta: R$ 0,00</span>
+                    </div>
+                </div>
+                <div class="okr-card">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <span style="font-weight: 600; color: #fff;">🚀 Projetos Fechados</span>
+                        <small style="color: #6b7280; font-weight: bold;">0%</small>
+                    </div>
+                    <div class="progress-container">
+                        <div class="progress-bar-fill" style="width: 0%;"></div>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; font-size: 0.8rem; color: var(--text-muted);">
+                        <span>Alcançado: 0</span>
+                        <span>Meta: 0</span>
+                    </div>
+                </div>
+            </div>
+
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1.5rem; margin-bottom: 2rem;">
+                <div class="card" style="border-left: 4px solid #10b981;">
+                    <small>💰 Receita do Mês</small>
+                    <h2 style="font-size: 1.8rem; color: #10b981;">R$ ${revCurrent.toFixed(2)}</h2>
+                    <p style="font-size: 0.8rem; color: ${revVar >= 0 ? '#10b981' : '#ef4444'}; font-weight: bold;">${revVar >= 0 ? '▲' : '▼'} ${Math.abs(revVar).toFixed(1)}% vs Mês Passado</p>
+                </div>
+                <div class="card" style="border-left: 4px solid #ef4444;">
+                    <small>📉 Gasto do Mês</small>
+                    <h2 style="font-size: 1.8rem; color: #ef4444;">R$ ${expCurrent.toFixed(2)}</h2>
+                </div>
+                <div class="card" style="border-left: 4px solid #22c55e;">
+                    <small>📈 Lucro do Mês</small>
+                    <h2 style="font-size: 1.8rem; color: ${profitCurrent >= 0 ? '#10b981' : '#ef4444'};">R$ ${profitCurrent.toFixed(2)}</h2>
+                </div>
+                <div class="card" style="border-left: 4px solid #3b82f6;">
+                    <small>🚀 Projetos Ativos</small>
+                    <h2 style="font-size: 1.8rem; color: #3b82f6;">${activeProjs}</h2>
+                </div>
+            </div>
+
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1.5rem; margin-bottom: 2rem;">
+                <div class="card">
+                    <h3>📊 Evolução Financeira</h3>
+                    <div style="height: 250px; position: relative;"><canvas id="financialChart"></canvas></div>
+                </div>
+                <div class="card">
+                    <h3>🍕 Despesas por Categoria</h3>
+                    <div style="height: 250px; position: relative;"><canvas id="categoryChart"></canvas></div>
+                </div>
+            </div>
+
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.5rem;">
+                <div class="card">
+                    <h3>📈 Estatísticas Gerais</h3>
+                    <ul style="list-style: none; padding: 0; line-height: 2; color: #e5e7eb;">
+                        <li>🔹 <b>Ticket Médio:</b> R$ ${ticketMedio.toFixed(2)}</li>
+                        <li>🔹 <b>Projetos Finalizados:</b> ${doneProjs}</li>
+                        <li>🔹 <b>Total de Membros:</b> ${members.length}</li>
+                    </ul>
+                </div>
+                <div class="card" style="display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center;">
+                    <h4 style="margin-bottom: 0.5rem; color: #fff;">Gestão de Alto Nível</h4>
+                    <p style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 1.5rem;">Todos os membros acompanham a saúde da OptimusJr.</p>
+                    <button onclick="navTo('financas')" style="width: auto; padding: 0.5rem 1.2rem; font-size: 0.85rem; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1);">Ver Detalhes</button>
+                </div>
+            </div>
+        `;
+
+        setTimeout(() => {
+             renderDashboardCharts(txs);
+        }, 150);
+
+        // Store data globally for report generation
+        window.currentDashboardData = { txs, projects, members, revCurrent, expCurrent, profitCurrent };
+
+    } catch (e) {
+        container.innerHTML = `<div class="card">Erro ao carregar Dashboard. Amostras indisponíveis.</div>`;
     }
 }
 
@@ -441,95 +568,120 @@ async function renderMembros(container) {
 }
 
 async function renderProjetos(container) {
-    document.getElementById('page-title').innerText = 'Projetos';
-    
-    const { data: projects, error } = await supabase
-        .from('projects')
-        .select(`
-            *,
-            users ( name )
-        `)
-        .order('created_at', { ascending: false });
+    document.getElementById('page-title').innerText = 'Gestão de Projetos (Kanban)';
+    if (!currentUser) return;
 
-    if (error) {
-        container.innerHTML = '<div class="card">Erro ao carregar projetos.</div>';
-        console.error(error);
-        return;
-    }
+    try {
+        const { data: projects, error } = await supabase
+            .from('projects')
+            .select(`*, users ( name )`)
+            .order('created_at', { ascending: false });
 
-    const canManageProjetos = currentUser?.role === 'Presidente' || currentUser?.dept === 'Projetos';
+        if (error) throw error;
 
-    container.innerHTML = `
-        ${canManageProjetos ? `
-        <div class="card" style="margin-bottom: 2rem;">
-            <h3>🚀 Novo Projeto</h3>
-            <form id="project-form" style="display: flex; flex-direction: column; gap: 1rem; margin-top: 1rem;">
-                <input type="text" id="p-name" placeholder="Nome do Projeto" required style="width: 100%;">
-                <textarea id="p-desc" placeholder="Descrição / Escopo" style="width: 100%; height: 100px; padding: 1rem; background: rgba(0,0,0,0.2); color:white; border:1px solid #333; border-radius:8px; resize: vertical;"></textarea>
-                <select id="p-status" style="width: 100%;">
-                    <option value="Planejamento">Planejamento</option>
-                    <option value="Em Execução">Em Execução</option>
-                    <option value="Concluído">Concluído</option>
-                </select>
-                <button type="submit">➕ Criar Projeto</button>
-            </form>
-        </div>
-        ` : ''}
+        const canManageProjetos = currentUser?.role === 'Presidente' || currentUser?.dept === 'Projetos';
+        const columns = ['Prospectando', 'Negociação', 'Execução', 'Testes/Revisão', 'Entregue'];
 
-        <div class="card">
-            <h3>Lista de Projetos</h3>
-            <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 1.5rem; margin-top: 1rem;">
-                ${projects?.map(p => `
-                    <div style="background: rgba(255,255,255,0.03); padding: 1.5rem; border-radius: 12px; border: 1px solid rgba(255,255,255,0.05); display: flex; flex-direction: column; justify-content: space-between; min-height: 200px; position: relative;">
-                        <!-- Topo do Card -->
-                        <div>
-                            <span style="position: absolute; top: 1rem; right: 1rem; padding: 0.2rem 0.6rem; border-radius: 20px; font-size: 0.8rem; font-weight: 500; background: ${p.status === 'Concluído' ? 'rgba(16, 185, 129, 0.2)' : p.status === 'Em Execução' ? 'rgba(59, 130, 246, 0.2)' : 'rgba(107, 114, 128, 0.2)'}; color: ${p.status === 'Concluído' ? '#10b981' : p.status === 'Em Execução' ? '#3b82f6' : '#9ca3af'}; border: 1px solid ${p.status === 'Concluído' ? 'rgba(16, 185, 129, 0.3)' : p.status === 'Em Execução' ? 'rgba(59, 130, 246, 0.3)' : 'rgba(107, 114, 128, 0.3)'};">${p.status}</span>
-                            <h4 style="margin-bottom: 0.5rem; color: #fff; font-size: 1.1rem; padding-right: 6rem;">${p.name}</h4>
-                            <p style="font-size: 0.9rem; color: #9ca3af; margin-bottom: 1.5rem; line-height: 1.5;">${p.description || 'Sem descrição.'}</p>
-                        </div>
+        container.innerHTML = `
+            ${canManageProjetos ? `
+            <div class="card" style="margin-bottom: 2rem;">
+                <h3>🚀 Novo Projeto</h3>
+                <form id="project-form" style="display: flex; flex-direction: column; gap: 1rem; margin-top: 1rem;">
+                    <input type="text" id="p-name" placeholder="Nome do Projeto" required style="width: 100%;">
+                    <textarea id="p-desc" placeholder="Descrição / Escopo" style="width: 100%; height: 80px; padding: 0.8rem; background: rgba(0,0,0,0.2); color:white; border:1px solid #333; border-radius:8px; resize: vertical;"></textarea>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1rem;">
+                        <select id="p-status">
+                            ${columns.map(c => `<option value="${c}">${c}</option>`).join('')}
+                        </select>
+                        <input type="number" id="p-value" placeholder="Valor Negociado (R$)" step="0.01">
+                        <input type="date" id="p-deadline">
+                    </div>
+                    <button type="submit">➕ Criar Projeto</button>
+                </form>
+            </div>
+            ` : ''}
 
-                        <!-- Rodapé do Card -->
-                        <div style="margin-top: auto;">
-                            <hr style="border-color: rgba(255,255,255,0.05); margin-bottom: 0.8rem;">
-                            <div style="display: flex; justify-content: space-between; align-items: center; gap: 0.5rem;">
-                                <small style="color: #6b7280;">Por: <b style="color: #e5e7eb;">${p.users?.name || 'Desconhecido'}</b></small>
-                                ${canManageProjetos ? `
-                                <button onclick="window.deleteProject('${p.id}')" style="background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.2); color: #ef4444; cursor: pointer; padding: 0.4rem 0.6rem; border-radius: 6px; font-size: 0.8rem; display: flex; align-items: center; gap: 0.3rem; transition: all 0.2s;" title="Excluir">🗑️ <span style="font-weight: 500;">Excluir</span></button>
-                                ` : ''}
-                            </div>
+            <!-- Kanban Board -->
+            <div class="kanban-board">
+                ${columns.map(col => `
+                    <div class="kanban-column" ondragover="window.allowDrop(event)" ondrop="window.dropProject(event, '${col}')">
+                        <h4>${col}</h4>
+                        <div class="kanban-cards-container" id="kanban-col-${col}">
+                            ${projects?.filter(p => p.status === col).map(p => `
+                                <div class="kanban-card" draggable="true" ondragstart="window.dragProject(event, '${p.id}')">
+                                    <h5>${p.name}</h5>
+                                    <p>${p.description || 'Sem descrição.'}</p>
+                                    <div style="font-size: 0.8rem; color: #9ca3af; margin-bottom: 0.8rem;">
+                                        💰 <b>R$ ${Number(p.value || 0).toFixed(2)}</b><br>
+                                        📅 <b>Até:</b> ${p.deadline ? new Date(p.deadline).toLocaleDateString('pt-BR') : 'A definir'}
+                                    </div>
+                                    <div class="kanban-card-footer">
+                                        <span>👤 ${p.users?.name || 'Vago'}</span>
+                                        ${canManageProjetos ? `<button onclick="window.deleteProject('${p.id}')" style="background:transparent; color:#ef4444; padding:0; width:auto; font-size:0.8rem;" title="Deletar">🗑️</button>` : ''}
+                                    </div>
+                                </div>
+                            `).join('') || '<div style="text-align:center; color:rgba(255,255,255,0.1); padding:2rem; font-size:0.8rem;">Vazio</div>'}
                         </div>
                     </div>
-                `).join('') || '<p>Nenhum projeto cadastrado.</p>'}
+                `).join('')}
             </div>
-        </div>
-    `;
+        `;
 
-    document.getElementById('project-form').addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const name = document.getElementById('p-name').value;
-        const description = document.getElementById('p-desc').value;
-        const status = document.getElementById('p-status').value;
+        if (canManageProjetos) {
+            document.getElementById('project-form').addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const name = document.getElementById('p-name').value;
+                const description = document.getElementById('p-desc').value;
+                const status = document.getElementById('p-status').value;
+                const value = Number(document.getElementById('p-value').value) || 0;
+                const deadline = document.getElementById('p-deadline').value;
 
-        const { error: insertError } = await supabase
-            .from('projects')
-            .insert([{ name, description, status, created_by: currentUser.uid }]);
+                const { error: insertError } = await supabase
+                    .from('projects')
+                    .insert([{ name, description, status, value, deadline, created_by: currentUser.uid }]);
 
-        if (insertError) {
-            alert("Erro ao criar projeto: " + insertError.message);
-        } else {
-            alert("Projeto criado com sucesso!");
-            
-            // Disparar Notificação por Email via EmailJS
-            sendEmailNotification({
-                titulo_notificacao: 'Novo Projeto Criado',
-                subtitulo: '🚀 Projeto: ' + name,
-                mensagem_corpo: 'Um novo projeto foi adicionado ao sistema por ' + (currentUser?.name || 'Membro') + '.',
-                detalhes: `• Nome: ${name}\n• Status: ${status}\n• Descrição: ${description || 'Sem descrição.'}`
+                if (insertError) {
+                    alert("Erro ao criar projeto: " + insertError.message);
+                } else {
+                    alert("Projeto criado com sucesso!");
+                    renderProjetos(container);
+                }
             });
-
-            renderProjetos(container); // Recarrega
         }
-    });
+
+    } catch (err) {
+        container.innerHTML = '<div class="card">Erro ao carregar projetos.</div>';
+    }
+}
+
+// Global Drag & Drop Handlers for Projects
+window.allowDrop = (e) => {
+    e.preventDefault();
+}
+
+window.dragProject = (e, projectId) => {
+    e.dataTransfer.setData("text/plain", projectId);
+}
+
+window.dropProject = async (e, newStatus) => {
+    e.preventDefault();
+    const projectId = e.dataTransfer.getData("text/plain");
+
+    if (projectId) {
+        const { error } = await supabase
+            .from('projects')
+            .update({ status: newStatus })
+            .eq('id', projectId);
+
+        if (error) {
+            alert("Erro ao mover projeto: " + error.message);
+        } else {
+            const container = document.getElementById('dashboard-content');
+            if (currentPage === 'projetos') {
+                renderProjetos(container);
+            }
+        }
+    }
 }
 
 function renderHistoria(container) {
@@ -571,10 +723,10 @@ function renderHistoria(container) {
     `;
 }
 
-async function renderEconomia(container) {
-    document.getElementById('page-title').innerText = 'Painel Financeiro';
+async function renderFinancas(container) {
+    document.getElementById('page-title').innerText = 'Painel Financeiro Unificado';
+    if (!currentUser) return;
 
-    // Busca Transações
     const { data: txs, error } = await supabase
         .from('transactions')
         .select(`*, users(name)`)
@@ -585,7 +737,6 @@ async function renderEconomia(container) {
         return;
     }
 
-    // Cálculos
     const receita = txs?.filter(t => t.type === 'Receita').reduce((sum, t) => sum + Number(t.amount), 0) || 0;
     const despesa = txs?.filter(t => t.type === 'Despesa').reduce((sum, t) => sum + Number(t.amount), 0) || 0;
     const saldo = receita - despesa;
@@ -594,126 +745,53 @@ async function renderEconomia(container) {
 
     container.innerHTML = `
         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1.5rem; margin-bottom: 2rem;">
-            <div class="card" style="border-left: 4px solid #10b981;">
-                <small>💰 Saldo Atual</small>
+            <div class="card" style="border-left: 4px solid ${saldo >= 0 ? '#10b981' : '#ef4444'};">
+                <small>💰 Saldo Consolidado</small>
                 <h2 style="font-size: 2rem; color: ${saldo >= 0 ? '#10b981' : '#ef4444'};">R$ ${saldo.toFixed(2)}</h2>
             </div>
             <div class="card" style="border-left: 4px solid #10b981;">
-                <small>📈 Total Receitas</small>
+                <small>📈 Receita Total</small>
                 <h3 style="color: #10b981;">+ R$ ${receita.toFixed(2)}</h3>
             </div>
             <div class="card" style="border-left: 4px solid #ef4444;">
-                <small>📉 Total Despesas</small>
+                <small>📉 Despesa Total</small>
                 <h3 style="color: #ef4444;">- R$ ${despesa.toFixed(2)}</h3>
             </div>
         </div>
 
-        ${canManageFin ? `
-        <div class="card" style="margin-bottom: 2rem;">
-            <h3>➕ Lançar Receita/Entrada</h3>
-            <form id="income-form" style="display: flex; flex-direction: column; gap: 1rem; margin-top: 1rem;">
-                <div style="display: flex; gap: 1rem;">
-                    <input type="text" id="t-desc" placeholder="Descrição (Ex: Fechamento Projeto X)" required style="flex: 2;">
-                    <input type="number" id="t-amount" placeholder="Valor (R$)" step="0.01" min="0.01" required style="flex: 1;">
-                </div>
-                <div style="display: flex; gap: 1rem;">
-                    <input type="date" id="t-date" style="flex: 1;">
-                    <input type="text" id="t-cat" placeholder="Categoria (Ex: Projetos, Doação)" style="flex: 1;">
-                </div>
-                <button type="submit" style="background: #10b981;">✅ Registrar Receita</button>
-            </form>
-        </div>
-        ` : ''}
-
-        <div class="card">
-            <h3>Historico de Transações</h3>
-            <div style="overflow-x: auto; margin-top: 1rem;">
-                <table>
-                    <thead>
-                        <tr><th>Data</th><th>Tipo</th><th>Descrição</th><th>Valor</th><th>Autor</th></tr>
-                    </thead>
-                    <tbody>
-                        ${txs?.map(t => `
-                            <tr>
-                                <td data-label="Data">${new Date(t.date).toLocaleDateString('pt-BR')}</td>
-                                <td data-label="Tipo" style="color: ${t.type === 'Receita' ? '#10b981' : '#ef4444'}; font-weight: bold;">${t.type}</td>
-                                <td data-label="Descrição">${t.description}</td>
-                                <td data-label="Valor">R$ ${Number(t.amount).toFixed(2)}</td>
-                                <td data-label="Autor">${t.users?.name || '-'}</td>
-                            </tr>
-                        `).join('') || '<tr><td colspan="5">Sem movimentações.</td></tr>'}
-                    </tbody>
-                </table>
+        <div class="card" style="padding: 1.5rem;">
+            <div style="display: flex; gap: 1rem; border-bottom: 2px solid rgba(255,255,255,0.05); margin-bottom: 1.5rem;">
+                <button onclick="window.toggleFinanceTab('entradas')" id="tab-entradas" style="background: transparent; border-bottom: 2px solid #10b981; border-radius: 0; width: auto; color: #10b981; padding: 0.5rem 1rem;">🟢 Entradas</button>
+                <button onclick="window.toggleFinanceTab('saidas')" id="tab-saidas" style="background: transparent; border-bottom: 2px solid transparent; border-radius: 0; width: auto; color: #9ca3af; padding: 0.5rem 1rem;">🔴 Saídas</button>
             </div>
-        </div>
-    `;
 
-    document.getElementById('income-form').addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const description = document.getElementById('t-desc').value;
-        const amount = Number(document.getElementById('t-amount').value);
-        const date = document.getElementById('t-date').value || new Date().toISOString().split('T')[0];
-        const category = document.getElementById('t-cat').value || 'Geral';
-
-        const { error: insertError } = await supabase
-            .from('transactions')
-            .insert([{ type: 'Receita', description, amount, date, category, created_by: currentUser.uid }]);
-
-        if (insertError) {
-            alert("Erro: " + insertError.message);
-        } else {
-            alert("Receita registrada!");
-            
-            // Disparar Notificação por Email via EmailJS
-            sendEmailNotification({
-                titulo_notificacao: 'Nova Entrada Financeira',
-                subtitulo: '💰 Receita Registrada',
-                mensagem_corpo: 'Uma nova entrada financeira foi lançada pelo painel.',
-                detalhes: `• Tipo: Receita\n• Descrição: ${description}\n• Valor: R$ ${Number(amount).toFixed(2)}\n• Categoria: ${category || 'Geral'}`
-            });
-
-            renderEconomia(container);
-        }
-    });
-}
-
-async function renderGastos(container) {
-    document.getElementById('page-title').innerText = 'Controle de Gastos';
-
-    const { data: txs, error } = await supabase
-        .from('transactions')
-        .select(`*, users(name)`)
-        .eq('type', 'Despesa')
-        .order('date', { ascending: false });
-
-    if (error) {
-        container.innerHTML = '<div class="card">Erro ao carregar despesas.</div>';
-        return;
-    }
-
-    const canManageFin = currentUser?.role === 'Presidente' || currentUser?.dept === 'Vice-Presidência';
-
-    container.innerHTML = `
-         ${canManageFin ? `
-         <div class="card" style="margin-bottom: 2rem;">
-            <h3>💸 Registrar Novo Gasto/Despesa</h3>
-            <form id="expense-form" style="display: flex; flex-direction: column; gap: 1rem; margin-top: 1rem;">
-                <div style="display: flex; gap: 1rem;">
-                    <input type="text" id="g-desc" placeholder="Descrição (Ex: Servidor AWS)" required style="flex: 2;">
-                    <input type="number" id="g-amount" placeholder="Valor (R$)" step="0.01" min="0.01" required style="flex: 1;">
+            ${canManageFin ? `
+                <div id="form-entradas" class="finance-section">
+                    <h4>➕ Registrar Entrada/Receita</h4>
+                    <form id="income-form" style="display: flex; flex-direction: column; gap: 1rem; margin-top: 1rem;">
+                        <input type="text" id="t-desc" placeholder="Descrição (Ex: Fechamento Projeto X)" required style="flex: 2;">
+                        <input type="number" id="t-amount" placeholder="Valor (R$)" step="0.01" min="0.01" required style="flex: 1;">
+                        <input type="text" id="t-cat" placeholder="Categoria (Ex: Projetos, Patrocínio)" required style="flex: 1;">
+                        <input type="date" id="t-date" style="flex: 1;">
+                        <button type="submit" style="background: #10b981;">✅ Salvar Entrada</button>
+                    </form>
                 </div>
-                <div style="display: flex; gap: 1rem;">
-                    <input type="date" id="g-date" style="flex: 1;">
-                    <input type="text" id="g-cat" placeholder="Categoria (Ex: Infra, Coffee Break)" style="flex: 1;">
+                <div id="form-saidas" class="finance-section" style="display: none;">
+                    <h4>💸 Registrar Saída/Gasto</h4>
+                    <form id="expense-form" style="display: flex; flex-direction: column; gap: 1rem; margin-top: 1rem;">
+                        <input type="text" id="g-desc" placeholder="Descrição (Ex: Servidor AWS)" required style="flex: 2;">
+                        <input type="number" id="g-amount" placeholder="Valor (R$)" step="0.01" min="0.01" required style="flex: 1;">
+                        <input type="text" id="g-cat" placeholder="Categoria (Ex: Operacional, Marketing)" required style="flex: 1;">
+                        <input type="date" id="g-date" style="flex: 1;">
+                        <button type="submit" style="background: #ef4444;">🚨 Salvar Gasto</button>
+                    </form>
                 </div>
-                <button type="submit" style="background: #ef4444;">🚨 Lançar Gasto</button>
-            </form>
+            ` : `<p style="color: #9ca3af; font-size: 0.9rem;">Operação restrita à Presidência e Vice-Presidência.</p>`}
         </div>
-        ` : ''}
 
-        <div class="card">
-            <h3>Lista de Despesas</h3>
-             <div style="overflow-x: auto; margin-top: 1rem;">
+        <div class="card" style="margin-top: 2rem;">
+            <h3>📊 Extrato de Movimentações</h3>
+            <div style="overflow-x: auto; margin-top: 1rem;">
                 <table>
                     <thead>
                         <tr><th>Data</th><th>Fluxo</th><th>Descrição</th><th>Categoria</th><th>Valor</th><th>Por</th></tr>
@@ -722,44 +800,246 @@ async function renderGastos(container) {
                         ${txs?.map(t => `
                             <tr>
                                 <td data-label="Data">${new Date(t.date).toLocaleDateString('pt-BR')}</td>
-                                <td data-label="Fluxo" style="color: #ef4444; font-weight: bold;">Despesa</td>
+                                <td data-label="Fluxo" style="color: ${t.type === 'Receita' ? '#10b981' : '#ef4444'}; font-weight: bold;">${t.type}</td>
                                 <td data-label="Descrição">${t.description}</td>
-                                <td data-label="Categoria"><span style="background: rgba(239, 68, 68, 0.1); padding: 0.2rem 0.5rem; border-radius: 4px; font-size: 0.8rem;">${t.category}</span></td>
-                                <td data-label="Valor" style="color: #ef4444;">- R$ ${Number(t.amount).toFixed(2)}</td>
+                                <td data-label="Categoria"><span style="background: rgba(255,255,255,0.05); padding: 0.2rem 0.5rem; border-radius: 4px; font-size: 0.8rem;">${t.category || 'Geral'}</span></td>
+                                <td data-label="Valor" style="color: ${t.type === 'Receita' ? '#10b981' : '#ef4444'};">${t.type === 'Receita' ? '+' : '-'} R$ ${Number(t.amount).toFixed(2)}</td>
                                 <td data-label="Por">${t.users?.name || '-'}</td>
                             </tr>
-                        `).join('') || '<tr><td colspan="6">Sem despesas registradas.</td></tr>'}
+                        `).join('') || '<tr><td colspan="6">Sem movimentações.</td></tr>'}
                     </tbody>
                 </table>
             </div>
         </div>
     `;
 
-    document.getElementById('expense-form').addEventListener('submit', async (e) => {
+    if (canManageFin) {
+        document.getElementById('income-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            await window.handleFinanceSubmit('Receita');
+        });
+        document.getElementById('expense-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            await window.handleFinanceSubmit('Despesa');
+        });
+    }
+}
+
+// Helpers Finanças
+window.toggleFinanceTab = (tab) => {
+    const isEntrada = tab === 'entradas';
+    document.getElementById('form-entradas').style.display = isEntrada ? 'block' : 'none';
+    document.getElementById('form-saidas').style.display = isEntrada ? 'none' : 'block';
+    
+    document.getElementById('tab-entradas').style.borderColor = isEntrada ? '#10b981' : 'transparent';
+    document.getElementById('tab-entradas').style.color = isEntrada ? '#10b981' : '#9ca3af';
+    document.getElementById('tab-saidas').style.borderColor = !isEntrada ? '#ef4444' : 'transparent';
+    document.getElementById('tab-saidas').style.color = !isEntrada ? '#ef4444' : '#9ca3af';
+}
+
+window.handleFinanceSubmit = async (type) => {
+    const isIncome = type === 'Receita';
+    const prefix = isIncome ? 't' : 'g';
+    const description = document.getElementById(`${prefix}-desc`).value;
+    const amount = Number(document.getElementById(`${prefix}-amount`).value);
+    const category = document.getElementById(`${prefix}-cat`).value || 'Geral';
+    const date = document.getElementById(`${prefix}-date`).value || new Date().toISOString().split('T')[0];
+
+    const { error } = await supabase.from('transactions').insert([{ type, description, amount, date, category, created_by: currentUser.uid }]);
+
+    if (error) {
+        alert("Erro ao registrar: " + error.message);
+    } else {
+        alert(`${type} registrada com sucesso!`);
+        renderFinancas(document.getElementById('dashboard-content'));
+    }
+}
+
+// Charts Support
+window.renderDashboardCharts = (txs) => {
+    // 1. Chart Evolução (Receita vs Despesa)
+    const ctxFin = document.getElementById('financialChart').getContext('2d');
+    const months = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
+    
+    const revData = Array(12).fill(0);
+    const expData = Array(12).fill(0);
+
+    txs.forEach(t => {
+        const d = new Date(t.date);
+        const m = d.getMonth();
+        if (t.type === 'Receita') revData[m] += Number(t.amount);
+        else expData[m] += Number(t.amount);
+    });
+
+    new Chart(ctxFin, {
+        type: 'line',
+        data: {
+            labels: months,
+            datasets: [
+                { label: 'Receitas', data: revData, borderColor: '#10b981', backgroundColor: 'rgba(16, 185, 129, 0.1)', borderWidth: 2, fill: true },
+                { label: 'Despesas', data: expData, borderColor: '#ef4444', backgroundColor: 'rgba(239, 68, 68, 0.1)', borderWidth: 2, fill: true }
+            ]
+        },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { color: '#fff' } } }, scales: { y: { ticks: { color: '#9ca3af' } }, x: { ticks: { color: '#9ca3af' } } } }
+    });
+
+    // 2. Chart Pizza (Expense Categories)
+    const ctxCat = document.getElementById('categoryChart').getContext('2d');
+    const expenses = txs.filter(t => t.type === 'Despesa');
+    const catMap = {};
+    expenses.forEach(e => {
+        const cat = e.category || 'Geral';
+        catMap[cat] = (catMap[cat] || 0) + Number(e.amount);
+    });
+
+    new Chart(ctxCat, {
+        type: 'doughnut',
+        data: {
+            labels: Object.keys(catMap),
+            datasets: [{
+                data: Object.values(catMap),
+                backgroundColor: ['#ef4444', '#f59e0b', '#3b82f6', '#8b5cf6', '#ec4899', '#10b981'],
+                borderWidth: 0
+            }]
+        },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { color: '#fff' } } } }
+    });
+}
+
+// Report Support
+window.openReportModal = () => {
+    document.getElementById('report-notes-input').value = '';
+    document.getElementById('report-modal-overlay').style.display = 'flex';
+}
+
+window.closeReportModal = () => {
+    document.getElementById('report-modal-overlay').style.display = 'none';
+}
+
+window.confirmReport = () => {
+    const notes = document.getElementById('report-notes-input').value;
+    window.closeReportModal();
+    window.imprimirRelatorio(notes);
+}
+
+window.imprimirRelatorio = (notes) => {
+    const data = window.currentDashboardData;
+    if (!data) return alert("Erro ao carregar dados do relatório");
+
+    const printWindow = window.open('', '_blank');
+    const expenses = data.txs.filter(t => t.type === 'Despesa').sort((a,b) => b.amount - a.amount).slice(0, 5);
+
+    printWindow.document.write(`
+        <html>
+        <head>
+            <title>Relatório Gerencial - Optimus Jr.</title>
+            <style>
+                body { font-family: 'Inter', sans-serif; color: #111; padding: 2rem; max-width: 800px; margin: 0 auto; }
+                header { border-bottom: 3px solid #15803d; padding-bottom: 1rem; margin-bottom: 2rem; display: flex; justify-content: space-between; align-items: center; }
+                h1 { color: #15803d; margin: 0; }
+                .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin-bottom: 2rem; }
+                .card { border: 1px solid #ddd; padding: 1.5rem; border-radius: 8px; text-align: center; }
+                table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
+                th, td { border: 1px solid #ddd; padding: 0.8rem; text-align: left; }
+                th { background: #f4f4f4; }
+                .note { background: #f9f9f9; padding: 1rem; border-left: 4px solid #3b82f6; margin-bottom: 2rem; }
+            </style>
+        </head>
+        <body>
+            <header>
+                <div>
+                     <h1>📊 Relatório Gerencial</h1>
+                     <small>Optimus Jr. - ${new Date().toLocaleDateString('pt-BR')}</small>
+                </div>
+            </header>
+
+            ${notes ? `<div class="note"><b>📝 Notas do Gestor:</b><p>${notes.replace(/\n/g, '<br>')}</p></div>` : ''}
+
+            <div class="grid">
+                <div class="card"><h3>Receita Mês</h3><p style="color:#10b981; font-weight:bold; font-size:1.5rem;">R$ ${data.revCurrent.toFixed(2)}</p></div>
+                <div class="card"><h3>Despesa Mês</h3><p style="color:#ef4444; font-weight:bold; font-size:1.5rem;">R$ ${data.expCurrent.toFixed(2)}</p></div>
+                <div class="card"><h3>Lucro Mês</h3><p style="color:#22c55e; font-weight:bold; font-size:1.5rem;">R$ ${data.profitCurrent.toFixed(2)}</p></div>
+            </div>
+
+            <h2>🔥 Maiores Despesas do Período</h2>
+            <table>
+                <thead><tr><th>Data</th><th>Descrição</th><th>Categoria</th><th>Valor</th></tr></thead>
+                <tbody>
+                    ${expenses.map(e => `<tr><td>${new Date(e.date).toLocaleDateString('pt-BR')}</td><td>${e.description}</td><td>${e.category || 'Geral'}</td><td>R$ ${Number(e.amount).toFixed(2)}</td></tr>`).join('')}
+                </tbody>
+            </table>
+
+            <h2>🚀 Resumo de Projetos</h2>
+            <p>Ativos: <b>${data.projects.filter(p => p.status !== 'Concluído').length}</b> | Concluídos: <b>${data.projects.filter(p => p.status === 'Concluído').length}</b></p>
+
+            <script>
+                setTimeout(() => { window.print(); window.close(); }, 500);
+            </script>
+        </body>
+        </html>
+    `);
+    printWindow.document.close();
+}
+
+async function renderComercial(container) {
+    document.getElementById('page-title').innerText = 'Comercial / CRM';
+    if (!currentUser) return;
+
+    const leads = [];
+
+    container.innerHTML = `
+        <div style="display: flex; justify-content: flex-end; margin-bottom: 2rem;">
+            <button onclick="window.openLeadModal()" style="width: auto; background: #10b981; border: none; font-weight: bold; display: flex; align-items: center; gap: 0.5rem; padding: 0.8rem 1.5rem;"><span style="font-size: 1.2rem;">➕</span> Cadastrar Novo Lead</button>
+        </div>
+
+        <div class="card">
+            <h3>Pipeline de Leads</h3>
+            <table>
+                <thead>
+                    <tr><th>Cliente/Empresa</th><th>Contato</th><th>Dor/Necessidade</th><th>Probabilidade</th><th>Status</th></tr>
+                </thead>
+                <tbody>
+                    ${leads.length > 0 ? leads.map(l => `
+                        <tr>
+                            <td><b>${l.name}</b></td>
+                            <td>${l.contact}</td>
+                            <td>${l.pain}</td>
+                            <td><span style="padding: 0.2rem 0.6rem; border-radius: 20px; font-size: 0.75rem; background: ${l.probability === 'Alta' ? 'rgba(16, 185, 129, 0.2)' : l.probability === 'Média' ? 'rgba(245, 158, 11, 0.2)' : 'rgba(239, 68, 68, 0.2)'}; color: ${l.probability === 'Alta' ? '#10b981' : l.probability === 'Média' ? '#f59e0b' : '#ef4444'};">${l.probability}</span></td>
+                            <td><span style="padding: 0.2rem 0.6rem; border-radius: 20px; font-size: 0.75rem; background: rgba(255,255,255,0.05); color: var(--text-main);">${l.status}</span></td>
+                        </tr>
+                    `).join('') : '<tr><td colspan="5" style="text-align:center; color: var(--text-muted);">Nenhum lead cadastrado</td></tr>'}
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Modal Cadastro Lead -->
+        <div id="lead-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); backdrop-filter: blur(4px); z-index: 999; justify-content: center; align-items: center;">
+            <div class="card" style="width: 400px; max-width: 90%; background: #111; padding: 2rem;">
+                <h3>📋 Novo Lead</h3>
+                <form id="lead-form" style="display: flex; flex-direction: column; gap: 1rem; margin-top: 1rem;">
+                    <div><label>Empresa/Cliente</label><input type="text" id="l-name" required></div>
+                    <div><label>Contato</label><input type="text" id="l-contact" required></div>
+                    <div><label>Dor / Necessidade</label><input type="text" id="l-pain" required></div>
+                    <div><label>Probabilidade</label>
+                        <select id="l-prob" style="width: 100%;">
+                            <option value="Alta">Alta</option>
+                            <option value="Média">Média</option>
+                            <option value="Baixa">Baixa</option>
+                        </select>
+                    </div>
+                    <button type="submit">Cadastrar</button>
+                    <button type="button" onclick="window.closeLeadModal()" style="background: transparent; border: 1px solid #333; color: #9ca3af; margin-top: 0.5rem;">Cancelar</button>
+                </form>
+            </div>
+        </div>
+    `;
+
+    window.openLeadModal = () => { document.getElementById('lead-modal').style.display = 'flex'; }
+    window.closeLeadModal = () => { document.getElementById('lead-modal').style.display = 'none'; }
+    
+    document.getElementById('lead-form').addEventListener('submit', (e) => {
         e.preventDefault();
-        const description = document.getElementById('g-desc').value;
-        const amount = Number(document.getElementById('g-amount').value);
-        const date = document.getElementById('g-date').value || new Date().toISOString().split('T')[0];
-        const category = document.getElementById('g-cat').value || 'Geral';
-
-        const { error: insertError } = await supabase
-            .from('transactions')
-            .insert([{ type: 'Despesa', description, amount, date, category, created_by: currentUser.uid }]);
-
-        if (insertError) {
-            alert("Erro: " + insertError.message);
-        } else {
-            alert("Despesa cadastrada!");
-            
-            // Disparar Notificação por Email via EmailJS
-            sendEmailNotification({
-                titulo_notificacao: 'Nova Saída Financeira',
-                subtitulo: '💸 Despesa Registrada',
-                mensagem_corpo: 'Uma nova saída/gasto foi lançado no financeiro.',
-                detalhes: `• Tipo: Despesa\n• Descrição: ${description}\n• Valor: - R$ ${Number(amount).toFixed(2)}\n• Categoria: ${category || 'Geral'}`
-            });
-
-            renderGastos(container);
-        }
+        alert("Lead cadastrado com sucesso! (Simulado)");
+        window.closeLeadModal();
     });
 }
