@@ -366,6 +366,22 @@ window.saveProfile = async () => {
     const role = document.getElementById('edit-role').value;
     const dept = document.getElementById('edit-dept').value;
     
+    // --- GUARDA DE PERMISSÕES ---
+    const { data: allUsers } = await supabase.from('users').select('uid, role, dept');
+    
+    const presidents = allUsers?.filter(u => u.role === 'Presidente' && u.uid !== currentUser.uid) || [];
+    if (role === 'Presidente' && presidents.length > 0) {
+        alert("🚨 Negado: Só pode haver um Presidente cadastrado!");
+        return;
+    }
+    
+    const directors = allUsers?.filter(u => u.dept === dept && u.role === 'Diretor' && u.uid !== currentUser.uid) || [];
+    if (role === 'Diretor' && directors.length > 0) {
+         alert(`🚨 Negado: Já existe um Diretor no departamento ${dept}!`);
+         return;
+    }
+    // ----------------------------
+    
     const { error: updateError } = await supabase
         .from('users')
         .update({ bio, skills, role, dept })
@@ -441,7 +457,10 @@ async function renderProjetos(container) {
         return;
     }
 
+    const canManageProjetos = currentUser?.role === 'Presidente' || currentUser?.dept === 'Projetos';
+
     container.innerHTML = `
+        ${canManageProjetos ? `
         <div class="card" style="margin-bottom: 2rem;">
             <h3>🚀 Novo Projeto</h3>
             <form id="project-form" style="display: flex; flex-direction: column; gap: 1rem; margin-top: 1rem;">
@@ -455,6 +474,7 @@ async function renderProjetos(container) {
                 <button type="submit">➕ Criar Projeto</button>
             </form>
         </div>
+        ` : ''}
 
         <div class="card">
             <h3>Lista de Projetos</h3>
@@ -473,7 +493,9 @@ async function renderProjetos(container) {
                             <hr style="border-color: rgba(255,255,255,0.05); margin-bottom: 0.8rem;">
                             <div style="display: flex; justify-content: space-between; align-items: center; gap: 0.5rem;">
                                 <small style="color: #6b7280;">Por: <b style="color: #e5e7eb;">${p.users?.name || 'Desconhecido'}</b></small>
+                                ${canManageProjetos ? `
                                 <button onclick="window.deleteProject('${p.id}')" style="background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.2); color: #ef4444; cursor: pointer; padding: 0.4rem 0.6rem; border-radius: 6px; font-size: 0.8rem; display: flex; align-items: center; gap: 0.3rem; transition: all 0.2s;" title="Excluir">🗑️ <span style="font-weight: 500;">Excluir</span></button>
+                                ` : ''}
                             </div>
                         </div>
                     </div>
@@ -568,6 +590,8 @@ async function renderEconomia(container) {
     const despesa = txs?.filter(t => t.type === 'Despesa').reduce((sum, t) => sum + Number(t.amount), 0) || 0;
     const saldo = receita - despesa;
 
+    const canManageFin = currentUser?.role === 'Presidente' || currentUser?.dept === 'Vice-Presidência';
+
     container.innerHTML = `
         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1.5rem; margin-bottom: 2rem;">
             <div class="card" style="border-left: 4px solid #10b981;">
@@ -584,6 +608,7 @@ async function renderEconomia(container) {
             </div>
         </div>
 
+        ${canManageFin ? `
         <div class="card" style="margin-bottom: 2rem;">
             <h3>➕ Lançar Receita/Entrada</h3>
             <form id="income-form" style="display: flex; flex-direction: column; gap: 1rem; margin-top: 1rem;">
@@ -598,6 +623,7 @@ async function renderEconomia(container) {
                 <button type="submit" style="background: #10b981;">✅ Registrar Receita</button>
             </form>
         </div>
+        ` : ''}
 
         <div class="card">
             <h3>Historico de Transações</h3>
@@ -665,7 +691,10 @@ async function renderGastos(container) {
         return;
     }
 
+    const canManageFin = currentUser?.role === 'Presidente' || currentUser?.dept === 'Vice-Presidência';
+
     container.innerHTML = `
+         ${canManageFin ? `
          <div class="card" style="margin-bottom: 2rem;">
             <h3>💸 Registrar Novo Gasto/Despesa</h3>
             <form id="expense-form" style="display: flex; flex-direction: column; gap: 1rem; margin-top: 1rem;">
@@ -680,6 +709,7 @@ async function renderGastos(container) {
                 <button type="submit" style="background: #ef4444;">🚨 Lançar Gasto</button>
             </form>
         </div>
+        ` : ''}
 
         <div class="card">
             <h3>Lista de Despesas</h3>
