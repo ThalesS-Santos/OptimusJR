@@ -572,3 +572,88 @@ button:hover {
     background: rgba(34, 197, 94, 0.05);
     border: 1px dashed var(--primary);
 }
+
+/* --- CALENDÁRIO --- */
+.calendar-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 1.5rem;
+    margin-top: 1.5rem;
+}
+
+.calendar-month-card {
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    border-radius: 12px;
+    padding: 1.2rem;
+    backdrop-filter: blur(10px);
+    display: flex;
+    flex-direction: column;
+}
+
+.calendar-month-title {
+    text-align: center;
+    color: #3b82f6;
+    font-weight: bold;
+    margin-bottom: 1rem;
+    font-size: 1.1rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.calendar-days-header {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 4px;
+    text-align: center;
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+}
+
+.calendar-days-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 4px;
+    flex: 1;
+}
+
+.calendar-day-cell {
+    min-height: 50px;
+    background: rgba(0, 0, 0, 0.2);
+    border: 1px solid rgba(255, 255, 255, 0.03);
+    border-radius: 6px;
+    padding: 4px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    overflow: hidden;
+    position: relative;
+}
+
+.calendar-day-number {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    font-weight: 500;
+}
+
+.calendar-event-tag {
+    font-size: 0.6rem;
+    padding: 2px 4px;
+    border-radius: 3px;
+    color: #fff;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    line-height: 1.2;
+    background: #6b7280;
+    cursor: help;
+}
+
+/* Categorias de Eventos */
+.cat-monthly { background: #10b981 !important; }
+.cat-semiannual { background: #6366f1 !important; }
+.cat-brasiljr { background: #f59e0b !important; }
+.cat-industry { background: #3b82f6 !important; }
+.cat-holiday { background: #ef4444 !important; }

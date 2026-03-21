@@ -1,4 +1,5 @@
 import { supabase } from './supabase-config.js';
+import { calendarEvents } from './events.js';
 
 // --- NOTIFICAÇÕES (EmailJS) ---
 async function sendEmailNotification(subjectParams) {
@@ -245,6 +246,8 @@ async function loadContent() {
         case 'historia': renderHistoria(container); break;
         case 'financas': await renderFinancas(container); break;
         case 'comercial': await renderComercial(container); break;
+        case 'calendario': await renderCalendario(container); break;
+        case 'feedbacks': await renderFeedbacks(container); break;
         default: container.innerHTML = '<div class="card">Página não encontrada</div>';
     }
 }
@@ -1042,4 +1045,320 @@ async function renderComercial(container) {
         alert("Lead cadastrado com sucesso! (Simulado)");
         window.closeLeadModal();
     });
+}
+
+// --- CALENDÁRIO ---
+const monthsName = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
+const daysOfWeek = ["D", "S", "T", "Q", "Q", "S", "S"];
+
+function generateCalendarDays(month, year) {
+    const firstDay = new Date(year, month, 1).getDay();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const days = [];
+    for (let i = 0; i < firstDay; i++) days.push(null);
+    for (let i = 1; i <= daysInMonth; i++) days.push(i);
+    return days;
+}
+
+async function renderCalendario(container) {
+    document.getElementById('page-title').innerText = 'Calendário Institucional 2026';
+    if (!currentUser) return;
+
+    container.innerHTML = `<div style="text-align:center; padding:2rem; color:var(--text-muted)">📅 Carregando calendário e eventos...</div>`;
+
+    let events = [];
+    let loadError = false;
+
+    try {
+        const { data, error } = await supabase
+            .from('calendar_events')
+            .select('*')
+            .order('date', { ascending: true });
+
+        if (error) throw error;
+        events = data || [];
+    } catch (err) {
+        console.error("Erro ao carregar calendar_events:", err);
+        loadError = true;
+        // Se der erro (ex: tabela não existe), usamos os estáticos como fallback
+        events = typeof calendarEvents !== 'undefined' ? calendarEvents : [];
+    }
+
+    container.innerHTML = `
+        <div style="display: flex; gap: 1rem; align-items: center; margin-bottom: 2rem; background: rgba(255,255,255,0.03); padding: 1rem; border-radius: 12px; border: 1px solid rgba(255,255,255,0.05); flex-wrap: wrap;">
+            <div style="background: rgba(59, 130, 246, 0.2); padding: 0.6rem; border-radius: 8px;"><span style="font-size: 1.5rem;">📅</span></div>
+            <div>
+                <h4 style="color: #fff;">Metas & Planejamento Dinâmico</h4>
+                <p style="font-size: 0.8rem; color: var(--text-muted);">Visualize e gerencie as datas da gestão.</p>
+            </div>
+            
+            <div style="margin-left: auto; display: flex; gap: 0.8rem; align-items: center;">
+                <button onclick="window.openCalendarModal()" style="background: #3b82f6; border: none; font-weight: bold; padding: 0.6rem 1.2rem; font-size: 0.85rem;">➕ Novo Evento</button>
+            </div>
+        </div>
+
+        ${loadError ? `<div class="card" style="margin-bottom: 2rem; border-color: #ef4444; background: rgba(239, 68, 68, 0.05);">
+            <p style="color: #ef4444; font-weight: bold;">⚠️ Tabela 'calendar_events' não encontrada no Supabase!</p>
+            <p style="font-size: 0.9rem; color: var(--text-muted); margin-top: 0.5rem;">Por favor, crie a tabela primeiro usando o arquivo <b><code>calendar_setup.sql</code></b> no SQL Editor do painel do Supabase. Enquanto isso, exibindo backup estático.</p>
+        </div>` : ''}
+
+        <!-- Legenda -->
+        <div style="display: flex; gap: 0.8rem; font-size: 0.75rem; margin-bottom: 1.5rem; background: rgba(0,0,0,0.1); padding: 0.8rem; border-radius: 8px;">
+            <span style="display: flex; align-items: center; gap: 4px;"><div style="width:8px; height:8px; border-radius:50%; background:#10b981;"></div>Mensal</span>
+            <span style="display: flex; align-items: center; gap: 4px;"><div style="width:8px; height:8px; border-radius:50%; background:#6366f1;"></div>Semestral</span>
+            <span style="display: flex; align-items: center; gap: 4px;"><div style="width:8px; height:8px; border-radius:50%; background:#f59e0b;"></div>Brasil Jr</span>
+            <span style="display: flex; align-items: center; gap: 4px;"><div style="width:8px; height:8px; border-radius:50%; background:#3b82f6;"></div>Inovação</span>
+            <span style="display: flex; align-items: center; gap: 4px;"><div style="width:8px; height:8px; border-radius:50%; background:#ef4444;"></div>Feriado</span>
+        </div>
+
+        <div class="calendar-grid">
+            ${monthsName.map((m, mIdx) => {
+                const days = generateCalendarDays(mIdx, 2026);
+                return `
+                    <div class="calendar-month-card">
+                        <div class="calendar-month-title">${m}</div>
+                        <div class="calendar-days-header">
+                            ${daysOfWeek.map(d => `<div>${d}</div>`).join('')}
+                        </div>
+                        <div class="calendar-days-grid">
+                            ${days.map(day => {
+                                if (!day) return `<div class="calendar-day-cell" style="opacity:0;"></div>`;
+                                const dateStr = `2026-${String(mIdx + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                                const dayEvts = events.filter(e => e.date === dateStr);
+                                
+                                return `
+                                    <div class="calendar-day-cell">
+                                        <div class="calendar-day-number">${day}</div>
+                                        <div style="display: flex; flex-direction: column; gap: 2px; overflow-y: auto; max-height: 50px;">
+                                            ${dayEvts.map(ev => {
+                                                let catClass = '';
+                                                if (ev.category === 'monthly') catClass = 'cat-monthly';
+                                                else if (ev.category === 'semiannual') catClass = 'cat-semiannual';
+                                                else if (ev.category === 'brasiljr') catClass = 'cat-brasiljr';
+                                                else if (ev.category === 'industry') catClass = 'cat-industry';
+                                                else if (ev.category === 'holiday') catClass = 'cat-holiday';
+                                                
+                                                return `
+                                                    <div class="calendar-event-tag ${catClass}" title="${ev.title}${ev.description ? ': ' + ev.description : ''}" style="position: relative;">
+                                                        ${ev.title}
+                                                        ${!loadError ? `<button onclick="window.deletarEvento('${ev.id}')" style="position: absolute; right: 2px; top: 0px; background: transparent; color: #fff; padding: 0; font-size: 0.6rem; border: none; opacity: 0.6; width: auto;" title="Excluir">×</button>` : ''}
+                                                    </div>
+                                                `;
+                                            }).join('')}
+                                        </div>
+                                    </div>
+                                `;
+                            }).join('')}
+                        </div>
+                    </div>
+                `;
+            }).join('')}
+        </div>
+
+        <!-- Modal Cadastro Evento -->
+        <div id="cal-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); backdrop-filter: blur(4px); z-index: 999; justify-content: center; align-items: center;">
+            <div class="card" style="width: 400px; max-width: 90%; background: #111; padding: 2rem;">
+                <h3>📋 Novo Evento</h3>
+                <form id="cal-form" style="display: flex; flex-direction: column; gap: 1rem; margin-top: 1rem;">
+                    <div><label>Título</label><input type="text" id="c-title" required style="width:100%;"></div>
+                    <div><label>Data</label><input type="date" id="c-date" required style="width:100%;"></div>
+                    <div><label>Categoria</label>
+                        <select id="c-cat" style="width: 100%;">
+                            <option value="monthly">Mensal</option>
+                            <option value="semiannual">Semestral</option>
+                            <option value="brasiljr">Brasil Jr</option>
+                            <option value="industry">Inovação</option>
+                            <option value="holiday">Feriado</option>
+                        </select>
+                    </div>
+                    <div><label>Descrição</label><textarea id="c-desc" style="width:100%; height: 60px;"></textarea></div>
+                    <button type="submit">Cadastrar</button>
+                    <button type="button" onclick="window.closeCalendarModal()" style="background: transparent; border: 1px solid #333; color: #9ca3af; margin-top: 0.5rem;">Cancelar</button>
+                </form>
+            </div>
+        </div>
+    `;
+
+    // Metodos do modal
+    window.openCalendarModal = () => { document.getElementById('cal-modal').style.display = 'flex'; }
+    window.closeCalendarModal = () => { document.getElementById('cal-modal').style.display = 'none'; }
+
+    // Salvar Evento
+    document.getElementById('cal-form')?.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const title = document.getElementById('c-title').value;
+        const date = document.getElementById('c-date').value;
+        const category = document.getElementById('c-cat').value;
+        const description = document.getElementById('c-desc').value;
+
+        const { error } = await supabase
+            .from('calendar_events')
+            .insert([{ title, date, category, description }]);
+
+        if (error) {
+            alert("Erro ao cadastrar evento: " + error.message);
+        } else {
+            alert("Evento cadastrado com sucesso!");
+            window.closeCalendarModal();
+            renderCalendario(container); // Recarrega
+        }
+    });
+
+    // Deletar Evento
+    window.deletarEvento = async (id) => {
+        if (!confirm("Excluir este evento?")) return;
+        const { error } = await supabase
+            .from('calendar_events')
+            .delete()
+            .eq('id', id);
+
+        if (error) alert("Erro ao excluir: " + error.message);
+        else renderCalendario(container);
+    }
+
+    // Importar Iniciais
+    window.importarIniciais = async () => {
+        if (!confirm("Deseja importar os 61 eventos de backup para o Supabase?")) return;
+        if (typeof calendarEvents === 'undefined') { alert("Backup não encontrado."); return; }
+
+        // Remove ID manual para deixar o Supabase gerar UUID se necessario
+        const insertData = calendarEvents.map(({ id, ...rest }) => rest);
+
+        const { error } = await supabase
+            .from('calendar_events')
+            .insert(insertData);
+
+        if (error) {
+            alert("Erro ao importar (Tabela criada?): " + error.message);
+        } else {
+            alert("Importação realizada com sucesso!");
+            renderCalendario(container);
+        }
+    }
+}
+
+// --- FEEDBACKS & IDEIAS ---
+async function renderFeedbacks(container) {
+    document.getElementById('page-title').innerText = 'Ideias & Feedbacks';
+    if (!currentUser) return;
+
+    container.innerHTML = `<div style="text-align:center; padding:2rem; color:var(--text-muted)">💡 Carregando feedbacks e ideias...</div>`;
+
+    let items = [];
+    let loadError = false;
+
+    try {
+        const { data, error } = await supabase
+            .from('feedbacks_ideias')
+            .select('*')
+            .order('created_at', { ascending: false });
+
+        if (error) throw error;
+        items = data || [];
+    } catch (err) {
+        console.error("Erro ao carregar feedbacks_ideias:", err);
+        loadError = true;
+    }
+
+    container.innerHTML = `
+        <div style="display: flex; gap: 1rem; align-items: center; margin-bottom: 2rem; background: rgba(255,255,255,0.03); padding: 1rem; border-radius: 12px; border: 1px solid rgba(255,255,255,0.05); flex-wrap: wrap;">
+            <div style="background: rgba(245, 158, 11, 0.2); padding: 0.6rem; border-radius: 8px;"><span style="font-size: 1.5rem;">💡</span></div>
+            <div>
+                <h4 style="color: #fff;">Caixa de Ideias & Feedbacks</h4>
+                <p style="font-size: 0.8rem; color: var(--text-muted);">Espaço para sugestões, melhorias e feedbacks (pode ser anônimo).</p>
+            </div>
+            
+            <button onclick="window.openFeedbackModal()" style="margin-left: auto; background: #3b82f6; border: none; font-weight: bold; padding: 0.6rem 1.2rem; font-size: 0.85rem;">➕ Enviar Nota</button>
+        </div>
+
+        ${loadError ? `<div class="card" style="margin-bottom: 2rem; border-color: #ef4444; background: rgba(239, 68, 68, 0.05);">
+            <p style="color: #ef4444; font-weight: bold;">⚠️ Tabela 'feedbacks_ideias' não encontrada no Supabase!</p>
+            <p style="font-size: 0.9rem; color: var(--text-muted); margin-top: 0.5rem;">Por favor, execute o arquivo <b><code>feedback_setup.sql</code></b> no seu painel para ativar esta função.</p>
+        </div>` : ''}
+
+        <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 1.5rem;">
+            ${items.length === 0 ? `<div style="grid-column: 1 / -1; text-align: center; color: var(--text-muted); padding: 2rem;">Nenhuma ideia ou feedback registrado ainda. Seja o primeiro!</div>` : ''}
+            ${items.map(item => {
+                const isIdea = item.type === 'ideia';
+                const color = isIdea ? '#f59e0b' : '#3b82f6';
+                const label = isIdea ? '💡 Ideia' : '🗣️ Feedback';
+                
+                return `
+                    <div class="card" style="position: relative; border-color: rgba(255,255,255,0.05); background: rgba(255,255,255,0.02); display: flex; flex-direction: column; gap: 1rem;">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <span style="background: rgba(${isIdea ? '245, 158, 11' : '59, 130, 246'}, 0.1); color: ${color}; font-size: 0.75rem; font-weight: bold; padding: 0.3rem 0.6rem; border-radius: 6px;">${label}</span>
+                            <span style="font-size: 0.7rem; color: var(--text-muted);">${new Date(item.created_at).toLocaleDateString('pt-BR')}</span>
+                        </div>
+                        <p style="flex: 1; font-size: 0.9rem; color: #fff; white-space: pre-wrap;">${item.content}</p>
+                        <div style="border-top: 1px solid rgba(255,255,255,0.03); padding-top: 0.8rem; font-size: 0.75rem; color: var(--text-muted); display: flex; justify-content: space-between;">
+                            <span>Por: <b>${item.author || 'Anônimo'}</b></span>
+                            ${!loadError ? `<button onclick="window.deletarFeedback('${item.id}')" style="background: transparent; color: #ef4444; padding: 2px 5px; border: none; font-size: 0.7rem; width: auto;" title="Deletar">Remover</button>` : ''}
+                        </div>
+                    </div>
+                `;
+            }).join('')}
+        </div>
+
+        <!-- Modal Cadastro Feedback -->
+        <div id="fb-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); backdrop-filter: blur(4px); z-index: 999; justify-content: center; align-items: center;">
+            <div class="card" style="width: 450px; max-width: 90%; background: #111; padding: 2rem;">
+                <h3>📋 Enviar Nova Nota</h3>
+                <form id="fb-form" style="display: flex; flex-direction: column; gap: 1rem; margin-top: 1rem;">
+                    <div>
+                        <label>Tipo</label>
+                        <select id="f-type" style="width: 100%;" required>
+                            <option value="ideia">💡 Ideia / Sugestão</option>
+                            <option value="feedback">🗣️ Feedback / Crítica</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label>Conteúdo</label>
+                        <textarea id="f-content" required style="width:100%; height: 100px; padding: 0.8rem; background: rgba(0,0,0,0.2); color:white; border:1px solid #333; border-radius:8px;" placeholder="Escreva aqui seu pensamento..."></textarea>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 0.5rem;">
+                        <input type="checkbox" id="f-anon" style="width: auto;">
+                        <label for="f-anon" style="font-size: 0.85rem; cursor: pointer;">Postar anonimamente</label>
+                    </div>
+                    <button type="submit">Enviar</button>
+                    <button type="button" onclick="window.closeFeedbackModal()" style="background: transparent; border: 1px solid #333; color: #9ca3af; margin-top: 0.5rem;">Cancelar</button>
+                </form>
+            </div>
+        </div>
+    `;
+
+    // Metodos do modal
+    window.openFeedbackModal = () => { document.getElementById('fb-modal').style.display = 'flex'; }
+    window.closeFeedbackModal = () => { document.getElementById('fb-modal').style.display = 'none'; }
+
+    // Salvar Feedback
+    document.getElementById('fb-form')?.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const type = document.getElementById('f-type').value;
+        const content = document.getElementById('f-content').value;
+        const isAnon = document.getElementById('f-anon').checked;
+        const author = isAnon ? null : currentUser.name; 
+
+        const { error } = await supabase
+            .from('feedbacks_ideias')
+            .insert([{ type, content, author }]);
+
+        if (error) {
+            alert("Erro ao enviar: " + error.message);
+        } else {
+            alert("Enviado com sucesso!");
+            window.closeFeedbackModal();
+            renderFeedbacks(container); 
+        }
+    });
+
+    window.deletarFeedback = async (id) => {
+        if (!confirm("Excluir esta nota?")) return;
+        const { error } = await supabase
+            .from('feedbacks_ideias')
+            .delete()
+            .eq('id', id);
+
+        if (error) alert("Erro ao excluir: " + error.message);
+        else renderFeedbacks(container);
+    }
 }
