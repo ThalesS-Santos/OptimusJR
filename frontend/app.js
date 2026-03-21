@@ -145,8 +145,7 @@ async function checkUserInPostgres(authUser) {
             photoURL: authUser.user_metadata?.avatar_url || 'https://via.placeholder.com/40',
             role: "Membro", // Default
             dept: "Geral",   // Default
-            bio: "Novo membro da Optimus JR",
-            skills: "Iniciante"
+            bio: "Novo membro da Optimus JR"
         };
         const { data: insertedUser, error: insertError } = await supabase
             .from('users')
@@ -299,6 +298,11 @@ async function renderHome(container) {
         const doneProjs = projects.filter(p => p.status === 'Concluído').length;
         const ticketMedio = projects.length > 0 ? (txs.filter(t => t.type === 'Receita').reduce((s,t) => s + Number(t.amount), 0) / projects.length) : 0;
 
+        const META_FATURAMENTO = 15000;
+        const META_PROJETOS = 10;
+        const percFaturamento = Math.min(100, (revCurrent / META_FATURAMENTO) * 100);
+        const percProjetos = Math.min(100, (doneProjs / META_PROJETOS) * 100);
+
         container.innerHTML = `
             <div style="display: flex; justify-content: flex-end; margin-bottom: 1.5rem;">
                 <button onclick="window.openReportModal()" style="width: auto; background: #3b82f6; border: none; font-weight: bold; display: flex; align-items: center; gap: 0.5rem; padding: 0.8rem 1.5rem;"><span style="font-size: 1.2rem;">📊</span> Gerar Relatório de Desempenho</button>
@@ -309,27 +313,27 @@ async function renderHome(container) {
                 <div class="okr-card">
                     <div style="display: flex; justify-content: space-between; align-items: center;">
                         <span style="font-weight: 600; color: #fff;">🎯 Faturamento Semestral</span>
-                        <small style="color: #6b7280; font-weight: bold;">0%</small>
+                        <small style="color: #6b7280; font-weight: bold;">${percFaturamento.toFixed(1)}%</small>
                     </div>
                     <div class="progress-container">
-                        <div class="progress-bar-fill" style="width: 0%;"></div>
+                        <div class="progress-bar-fill" style="width: ${percFaturamento}%;"></div>
                     </div>
                     <div style="display: flex; justify-content: space-between; font-size: 0.8rem; color: var(--text-muted);">
-                        <span>Alcançado: R$ 0,00</span>
-                        <span>Meta: R$ 0,00</span>
+                        <span>Alcançado: R$ ${revCurrent.toFixed(2)}</span>
+                        <span>Meta: R$ ${META_FATURAMENTO.toFixed(2)}</span>
                     </div>
                 </div>
                 <div class="okr-card">
                     <div style="display: flex; justify-content: space-between; align-items: center;">
                         <span style="font-weight: 600; color: #fff;">🚀 Projetos Fechados</span>
-                        <small style="color: #6b7280; font-weight: bold;">0%</small>
+                        <small style="color: #6b7280; font-weight: bold;">${percProjetos.toFixed(1)}%</small>
                     </div>
                     <div class="progress-container">
-                        <div class="progress-bar-fill" style="width: 0%;"></div>
+                        <div class="progress-bar-fill" style="width: ${percProjetos}%;"></div>
                     </div>
                     <div style="display: flex; justify-content: space-between; font-size: 0.8rem; color: var(--text-muted);">
-                        <span>Alcançado: 0</span>
-                        <span>Meta: 0</span>
+                        <span>Alcançado: ${doneProjs}</span>
+                        <span>Meta: ${META_PROJETOS}</span>
                     </div>
                 </div>
             </div>
@@ -436,11 +440,6 @@ async function renderProfile(container) {
                 </select>
             </div>
 
-             <div class="form-group">
-                <label>Habilidades (Skills)</label>
-                <input type="text" id="edit-skills" value="${currentUser.skills || ''}">
-            </div>
-
             <button onclick="saveProfile()">💾 Salvar Perfil</button>
         </div>
     `;
@@ -492,7 +491,6 @@ window.uploadPhoto = async (input) => {
 
 window.saveProfile = async () => {
     const bio = document.getElementById('edit-bio').value;
-    const skills = document.getElementById('edit-skills').value;
     const role = document.getElementById('edit-role').value;
     const dept = document.getElementById('edit-dept').value;
     
@@ -514,7 +512,7 @@ window.saveProfile = async () => {
     
     const { error: updateError } = await supabase
         .from('users')
-        .update({ bio, skills, role, dept })
+        .update({ bio, role, dept })
         .eq('uid', currentUser.uid);
         
     if (updateError) {
@@ -524,7 +522,6 @@ window.saveProfile = async () => {
     }
         
     currentUser.bio = bio;
-    currentUser.skills = skills;
     currentUser.role = role;
     currentUser.dept = dept;
     
@@ -546,12 +543,19 @@ async function renderMembros(container) {
         return;
     }
 
+    const canManageMembers = currentUser?.role === 'Presidente' || currentUser?.dept === 'Gestão de Pessoas';
+
     container.innerHTML = `
         <div class="card">
             <h3>Nossa Equipe</h3>
             <table>
                 <thead>
-                    <tr><th>Membro</th><th>Cargo</th><th>Depto</th></tr>
+                    <tr>
+                        <th>Membro</th>
+                        <th>Cargo</th>
+                        <th>Depto</th>
+                        ${canManageMembers ? '<th>Ações</th>' : ''}
+                    </tr>
                 </thead>
                 <tbody>
                     ${members?.map(m => `
@@ -562,12 +566,31 @@ async function renderMembros(container) {
                             </td>
                             <td data-label="Cargo">${m.role || '-'}</td>
                             <td data-label="Depto">${m.dept || '-'}</td>
+                            ${canManageMembers ? `<td data-label="Ações"><button onclick="window.deleteMember('${m.uid}')" style="background:transparent; color:#ef4444; padding:0; width:auto; font-size:1.2rem;" title="Remover Membro">🗑️</button></td>` : ''}
                         </tr>
-                    `).join('') || '<tr><td colspan="3">Nenhum membro encontrado.</td></tr>'}
+                    `).join('') || `<tr><td colspan="${canManageMembers ? '4' : '3'}">Nenhum membro encontrado.</td></tr>`}
                 </tbody>
             </table>
         </div>
     `;
+}
+
+window.deleteMember = async (uid) => {
+    if (!await customConfirm("Remover Membro", "Tem certeza que deseja remover permanentemente este membro da EJ? O acesso dele será revogado e seu perfil apagado.")) return;
+    
+    const { error } = await supabase
+        .from('users')
+        .delete()
+        .eq('uid', uid);
+        
+    if (error) {
+        alert("Erro ao remover membro: " + error.message);
+    } else {
+        alert("Membro removido da EJ!");
+        if (currentPage === 'membros') {
+            renderMembros(document.getElementById('dashboard-content'));
+        }
+    }
 }
 
 async function renderProjetos(container) {
@@ -988,7 +1011,14 @@ async function renderComercial(container) {
     document.getElementById('page-title').innerText = 'Comercial / CRM';
     if (!currentUser) return;
 
-    const leads = [];
+    const { data: leadsData, error } = await supabase.from('leads').select('*').order('created_at', { ascending: false });
+    
+    if (error) {
+        container.innerHTML = '<div class="card">Erro ao carregar os leads do banco.</div>';
+        console.error("Erro CRM:", error);
+        return;
+    }
+    const leads = leadsData || [];
 
     container.innerHTML = `
         <div style="display: flex; justify-content: flex-end; margin-bottom: 2rem;">
@@ -1040,10 +1070,36 @@ async function renderComercial(container) {
     window.openLeadModal = () => { document.getElementById('lead-modal').style.display = 'flex'; }
     window.closeLeadModal = () => { document.getElementById('lead-modal').style.display = 'none'; }
     
-    document.getElementById('lead-form').addEventListener('submit', (e) => {
+    document.getElementById('lead-form').addEventListener('submit', async (e) => {
         e.preventDefault();
-        alert("Lead cadastrado com sucesso! (Simulado)");
-        window.closeLeadModal();
+        
+        const name = document.getElementById('l-name').value;
+        const contact = document.getElementById('l-contact').value;
+        const pain = document.getElementById('l-pain').value;
+        const probability = document.getElementById('l-prob').value;
+
+        const submitBtn = e.target.querySelector('button[type="submit"]');
+        submitBtn.innerText = "Salvando...";
+        submitBtn.disabled = true;
+
+        const { error: insertError } = await supabase.from('leads').insert([{
+            name,
+            contact,
+            pain,
+            probability,
+            status: 'Novo',
+            created_by: currentUser.uid
+        }]);
+
+        if (insertError) {
+            alert("Erro ao cadastrar lead: " + insertError.message);
+            submitBtn.innerText = "Cadastrar";
+            submitBtn.disabled = false;
+        } else {
+            alert("Lead cadastrado com sucesso!");
+            window.closeLeadModal();
+            renderComercial(container);
+        }
     });
 }
 
