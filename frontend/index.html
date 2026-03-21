@@ -45,6 +45,8 @@
                 <button onclick="navTo('calendario')" class="nav-item">📅 Calendário</button>
                 <button onclick="navTo('feedbacks')" class="nav-item">💡 Ideias & Feedbacks</button>
                 <button onclick="navTo('historia')" class="nav-item">📜 História</button>
+                <button onclick="navTo('demandas')" class="nav-item">📌 Minhas Demandas</button>
+                <button id="nav-diretoria" onclick="navTo('diretoria')" class="nav-item" style="display: none;">📊 Minha Diretoria</button>
                 <a href="https://wiki.optimusjr.com.br/WikOPTIMUS" target="_blank" class="nav-item" style="text-decoration: none; display: flex; align-items: center; gap: 0.8rem; color: var(--text-muted); padding: 0.75rem 1rem; border-radius: 8px; transition: all 0.2s;">📖 Wiki</a>
                 <div style="flex:1;"></div>
                 <button onclick="navTo('perfil')" class="nav-item">👤 Meu Perfil</button>
@@ -111,6 +113,51 @@
                   <button onclick="window.closeReportModal()" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: #fff; padding: 0.7rem 1.2rem; border-radius: 8px; cursor: pointer; font-size: 0.9rem; flex: 1;">Cancelar</button>
                   <button onclick="window.confirmReport()" style="background: #10b981; border: none; color: #fff; padding: 0.7rem 1.5rem; border-radius: 8px; cursor: pointer; font-size: 0.9rem; flex: 1;">Gerar Relatório</button>
              </div>
+        </div>
+    </div>
+
+    <!-- Notes Modal -->
+    <div id="notes-modal" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); backdrop-filter: blur(4px); z-index: 9999; align-items: center; justify-content: center;">
+        <div class="card" style="width: 500px; max-width: 90%; background: #111; padding: 2rem;">
+            <h3>📝 Notas da Demanda</h3>
+            <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1rem;">O responsável pode adicionar ou atualizar anotações sobre o progresso aqui.</p>
+            <textarea id="task-notes-input" style="width: 100%; height: 150px; padding: 1rem; background: rgba(0,0,0,0.3); color: white; border: 1px solid #333; border-radius: 8px; resize: vertical; margin-bottom: 1rem;"></textarea>
+            <div style="display: flex; gap: 1rem;">
+                <button type="button" onclick="window.closeNotesModal()" style="background: transparent; border: 1px solid #333; color: #9ca3af; padding: 0.8rem;">Cancelar</button>
+                <button type="button" onclick="window.saveTaskNotes()" style="background: #3b82f6; color: white; border: none; padding: 0.8rem;">Salvar Notas</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Performance Analysis Modal -->
+    <div id="perf-modal" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.8); backdrop-filter: blur(6px); z-index: 9999; align-items: center; justify-content: center;">
+        <div class="card" style="width: 800px; max-width: 95%; max-height: 90vh; overflow-y: auto; background: #0a0a0a; border: 1px solid rgba(255,255,255,0.1); padding: 2rem; position: relative;">
+            <button onclick="document.getElementById('perf-modal').style.display='none'" style="position: absolute; top: 1rem; right: 1rem; background: transparent; color: #9ca3af; border: none; font-size: 1.5rem; width: auto; padding: 0;">✖</button>
+            <div style="display: flex; align-items: center; gap: 1rem; margin-bottom: 2rem;">
+                <img id="perf-avatar" src="" style="width: 60px; height: 60px; border-radius: 50%; object-fit: cover; border: 2px solid #3b82f6;">
+                <div>
+                    <h2 id="perf-name" style="margin: 0; color: #fff;">-</h2>
+                    <span id="perf-role" style="color: #60a5fa; font-size: 0.9rem;">-</span>
+                </div>
+            </div>
+
+            <!-- KPIs -->
+            <div id="perf-kpis" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; margin-bottom: 2rem;">
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2rem;">
+                <!-- Phases Analysis -->
+                <div style="background: rgba(255,255,255,0.02); border-radius: 8px; padding: 1.5rem; border: 1px solid rgba(255,255,255,0.05);">
+                    <h3 style="margin-bottom: 1rem; font-size: 1.1rem;">Análise de Tempo por Fase</h3>
+                    <div id="perf-phases"></div>
+                </div>
+
+                <!-- History with notes -->
+                <div style="background: rgba(255,255,255,0.02); border-radius: 8px; padding: 1.5rem; border: 1px solid rgba(255,255,255,0.05);">
+                    <h3 style="margin-bottom: 1rem; font-size: 1.1rem;">Histórico e Anotações</h3>
+                    <div id="perf-history" style="max-height: 300px; overflow-y: auto; padding-right: 0.5rem;"></div>
+                </div>
+            </div>
         </div>
     </div>
 

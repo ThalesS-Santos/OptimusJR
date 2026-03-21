@@ -189,6 +189,11 @@ function showDashboard() {
         </div>
     `;
 
+    if (currentUser.role === 'Diretor' || currentUser.role === 'Presidente') {
+        const navDir = document.getElementById('nav-diretoria');
+        if (navDir) navDir.style.display = 'block';
+    }
+
     if (!currentUser.role || currentUser.role === 'Membro' && currentUser.dept === 'Geral') {
         alert("👋 Bem-vindo! Por favor, atualize o seu Cargo e Departamento no seu perfil.");
         navTo('perfil'); // Força ir pro perfil para preencher
@@ -247,6 +252,8 @@ async function loadContent() {
         case 'comercial': await renderComercial(container); break;
         case 'calendario': await renderCalendario(container); break;
         case 'feedbacks': await renderFeedbacks(container); break;
+        case 'diretoria': await renderDiretoria(container); break;
+        case 'demandas': await renderMinhasDemandas(container); break;
         default: container.innerHTML = '<div class="card">Página não encontrada</div>';
     }
 }
@@ -1417,4 +1424,414 @@ async function renderFeedbacks(container) {
         if (error) alert("Erro ao excluir: " + error.message);
         else renderFeedbacks(container);
     }
+}
+
+async function renderDiretoria(container) {
+    document.getElementById('page-title').innerText = 'Minha Diretoria';
+    if (!currentUser || (currentUser.role !== 'Diretor' && currentUser.role !== 'Presidente')) {
+        container.innerHTML = '<div class="card">Acesso Restrito.</div>';
+        return;
+    }
+
+    const { data: members, error: mErr } = await supabase.from('users').select('*').eq('dept', currentUser.dept);
+    const { data: tasks, error: tErr } = await supabase.from('department_tasks').select('*, users!department_tasks_assigned_to_fkey(name)').eq('department', currentUser.dept).order('created_at', { ascending: false });
+
+    if (mErr || tErr) {
+        container.innerHTML = '<div class="card">Erro ao carregar dados da diretoria.</div>';
+        console.error(mErr, tErr);
+        return;
+    }
+
+    const deptTasks = tasks || [];
+    const deptMembers = members || [];
+
+    // Calculate metrics
+    const pendingTasks = deptTasks.filter(t => t.status !== 'Concluído');
+    const doneTasks = deptTasks.filter(t => t.status === 'Concluído');
+    
+    let avgLeadTime = 0;
+    if (doneTasks.length > 0) {
+        const totalDays = doneTasks.reduce((acc, t) => {
+            if (!t.completed_at) return acc;
+            const created = new Date(t.created_at);
+            const completed = new Date(t.completed_at);
+            const diffTime = Math.abs(completed - created);
+            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+            return acc + diffDays;
+        }, 0);
+        avgLeadTime = (totalDays / doneTasks.length).toFixed(1);
+    }
+
+    // Workload per member
+    const memberStats = deptMembers.map(m => {
+        const mTasks = deptTasks.filter(t => t.assigned_to === m.uid);
+        const mPending = mTasks.filter(t => t.status !== 'Concluído').length;
+        const mDone = mTasks.filter(t => t.status === 'Concluído').length;
+        let badge = '';
+        let badgeColor = '';
+        if (mPending === 0) { badge = 'Ocioso'; badgeColor = '#10b981'; } // Green
+        else if (mPending <= 2) { badge = 'Disponível'; badgeColor = '#f59e0b'; } // Yellow
+        else { badge = 'Sobrecarragado'; badgeColor = '#ef4444'; } // Red
+        return { ...m, mPending, mDone, badge, badgeColor, mTasks };
+    });
+
+    // Recognition Wall
+    const topPerformers = [...memberStats].sort((a,b) => b.mDone - a.mDone).slice(0, 3);
+
+    container.innerHTML = `
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1.5rem; margin-bottom: 2rem;">
+            <div class="card" style="border-left: 4px solid #3b82f6;">
+                <small>👥 Total de Membros</small>
+                <h2 style="font-size: 1.8rem; color: #3b82f6;">${deptMembers.length}</h2>
+            </div>
+            <div class="card" style="border-left: 4px solid #f59e0b;">
+                <small>📋 Demandas Pendentes / Em Andamento</small>
+                <h2 style="font-size: 1.8rem; color: #f59e0b;">${pendingTasks.length}</h2>
+            </div>
+            <div class="card" style="border-left: 4px solid #10b981;">
+                <small>⏱️ Tempo Médio de Entrega</small>
+                <h2 style="font-size: 1.8rem; color: #10b981;">${avgLeadTime} dias</h2>
+            </div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1.5rem; margin-bottom: 2rem;">
+            <!-- Workload -->
+             <div class="card">
+                <h3>⚖️ Carga de Trabalho</h3>
+                <div style="margin-top: 1rem;">
+                    ${memberStats.map(ms => `
+                        <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.8rem 0; border-bottom: 1px solid rgba(255,255,255,0.05);">
+                            <div style="display: flex; align-items: center; gap: 0.8rem;">
+                                <img src="${ms.photoURL || 'https://via.placeholder.com/30'}" style="width: 30px; height: 30px; border-radius: 50%; object-fit: cover;">
+                                <span style="font-weight: bold; font-size: 0.9rem;">${ms.name}</span>
+                            </div>
+                            <div style="text-align: right; display: flex; flex-direction: column; align-items: flex-end; gap: 0.5rem;">
+                                <div>
+                                    <span style="font-size: 0.75rem; background: ${ms.badgeColor}20; color: ${ms.badgeColor}; padding: 0.2rem 0.6rem; border-radius: 12px; margin-right: 0.5rem;">${ms.badge} (${ms.mPending} demandas)</span>
+                                    <span style="font-size: 0.75rem; color: var(--text-muted);">${ms.mDone} concluídas</span>
+                                </div>
+                                <button onclick="window.analisarDesempenho('${ms.uid}')" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); padding: 0.3rem 0.8rem; font-size: 0.75rem; color: #60a5fa; border-radius: 6px;">📈 Analisar Desempenho</button>
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+
+            <!-- Mural -->
+             <div class="card" style="border-top: 4px solid #eab308;">
+                <h3>🏆 Mural de Reconhecimento</h3>
+                <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1rem;">Líderes de entrega deste mês.</p>
+                <div style="display: flex; flex-direction: column; gap: 1rem;">
+                    ${topPerformers.map((tp, idx) => `
+                        <div style="display: flex; align-items: center; gap: 1rem; background: rgba(255,255,255,0.02); padding: 0.8rem; border-radius: 8px;">
+                            <h2 style="color: #eab308; margin: 0; min-width: 30px;">#${idx+1}</h2>
+                            <img src="${tp.photoURL || 'https://via.placeholder.com/40'}" style="width: 40px; height: 40px; border-radius: 50%; object-fit: cover;">
+                            <div>
+                                <h4 style="margin: 0;">${tp.name}</h4>
+                                <span style="font-size: 0.8rem; color: #10b981;">${tp.mDone} entregas 🎉</span>
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+             </div>
+        </div>
+
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+            <h3 style="margin: 0;">📌 Quadro de Demandas Internas</h3>
+            <button onclick="window.openDemandaModal()" style="width: auto; background: #6366f1; border: none; font-weight: bold; padding: 0.6rem 1.2rem;">➕ Nova Demanda</button>
+        </div>
+
+        <div class="card">
+            <div style="overflow-x: auto;">
+                <table>
+                    <thead>
+                        <tr><th>Demanda</th><th>Responsável</th><th>Status</th><th>Ações</th></tr>
+                    </thead>
+                    <tbody>
+                        ${deptTasks.map(t => {
+                            let statusColor = '#9ca3af';
+                            if(t.status === 'Nem comecei') statusColor = '#ef4444';
+                            else if(t.status === 'Em andamento') statusColor = '#3b82f6';
+                            else if(t.status === 'Quase concluído') statusColor = '#f59e0b';
+                            else if(t.status === 'Concluído') statusColor = '#10b981';
+                            
+                            let nextBtn = '';
+                            if (t.status === 'Nem comecei') {
+                                nextBtn = `<button onclick="window.updateDemandaStatus('${t.id}', 'Em andamento')" style="background:transparent; color:#3b82f6; padding:0; width:auto; font-size:0.85rem; border:1px solid #3b82f6; border-radius:4px; padding: 0.2rem 0.5rem; white-space: nowrap;">Iniciar</button>`;
+                            } else if (t.status === 'Em andamento') {
+                                nextBtn = `<button onclick="window.updateDemandaStatus('${t.id}', 'Quase concluído')" style="background:transparent; color:#f59e0b; padding:0; width:auto; font-size:0.85rem; border:1px solid #f59e0b; border-radius:4px; padding: 0.2rem 0.5rem; white-space: nowrap;">Quase Concluir</button>`;
+                            } else if (t.status === 'Quase concluído') {
+                                nextBtn = `<button onclick="window.updateDemandaStatus('${t.id}', 'Concluído')" style="background:transparent; color:#10b981; padding:0; width:auto; font-size:0.85rem; border:1px solid #10b981; border-radius:4px; padding: 0.2rem 0.5rem; white-space: nowrap;">Concluir</button>`;
+                            }
+
+                            return `
+                            <tr>
+                                <td><b>${t.title}</b><br><small style="color: var(--text-muted);">${t.description}</small></td>
+                                <td>${t.users?.name || 'N/A'}</td>
+                                <td><span style="background: ${statusColor}20; color: ${statusColor}; padding: 0.2rem 0.6rem; border-radius: 12px; font-size: 0.75rem; white-space: nowrap;">${t.status}</span></td>
+                                <td>${nextBtn}</td>
+                            </tr>
+                            `;
+                        }).join('') || '<tr><td colspan="4" style="text-align:center; color: var(--text-muted);">Nenhuma demanda cadastrada.</td></tr>'}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Modal Nova Demanda -->
+        <div id="demanda-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); backdrop-filter: blur(4px); z-index: 999; justify-content: center; align-items: center;">
+            <div class="card" style="width: 450px; max-width: 90%; background: #111; padding: 2rem;">
+                <h3>➕ Atribuir Nova Demanda</h3>
+                <form id="demanda-form" style="display: flex; flex-direction: column; gap: 1rem; margin-top: 1rem;">
+                    <div><label>Título da Demanda</label><input type="text" id="d-title" required></div>
+                    <div><label>Descrição</label><textarea id="d-desc" style="width:100%; height: 80px; padding:0.8rem; background:rgba(0,0,0,0.2); color:white; border:1px solid #333; border-radius:8px;"></textarea></div>
+                    <div>
+                        <label>Responsável</label>
+                        <select id="d-assigned" style="width: 100%;" required>
+                            <option value="">Selecione um membro...</option>
+                            ${deptMembers.map(m => `<option value="${m.uid}">${m.name}</option>`).join('')}
+                        </select>
+                    </div>
+                    <button type="submit" style="background: #6366f1;">Atribuir Demanda</button>
+                    <button type="button" onclick="window.closeDemandaModal()" style="background: transparent; border: 1px solid #333; color: #9ca3af; margin-top: 0.5rem;">Cancelar</button>
+                </form>
+            </div>
+        </div>
+    `;
+
+    window.openDemandaModal = () => document.getElementById('demanda-modal').style.display = 'flex';
+    window.closeDemandaModal = () => document.getElementById('demanda-modal').style.display = 'none';
+
+    document.getElementById('demanda-form')?.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const title = document.getElementById('d-title').value;
+        const description = document.getElementById('d-desc').value;
+        const assigned_to = document.getElementById('d-assigned').value;
+
+        const { error } = await supabase.from('department_tasks').insert([{
+            title, description, assigned_to, department: currentUser.dept, status: 'Nem comecei', created_by: currentUser.uid
+        }]);
+
+        if (error) alert("Erro: " + error.message);
+        else {
+            alert("Demanda atribuída com sucesso!");
+            window.closeDemandaModal();
+            renderDiretoria(container);
+        }
+    });
+
+    window.updateDemandaStatus = async (id, newStatus) => {
+        const updateData = { status: newStatus };
+        if (newStatus === 'Em andamento') {
+            updateData.started_at = new Date().toISOString();
+        } else if (newStatus === 'Quase concluído') {
+            updateData.almost_done_at = new Date().toISOString();
+        } else if (newStatus === 'Concluído') {
+            updateData.completed_at = new Date().toISOString();
+        }
+
+        const { error } = await supabase.from('department_tasks').update(updateData).eq('id', id);
+        
+        if (error) alert("Erro ao atualizar status: " + error.message);
+        else renderDiretoria(document.getElementById('dashboard-content'));
+    }
+
+    // Pass data universally for Modal
+    window.diretoriaData = { deptTasks, deptMembers };
+}
+
+// --- MINHAS DEMANDAS & ANALYTICS ---
+
+async function renderMinhasDemandas(container) {
+    document.getElementById('page-title').innerText = 'Minhas Demandas (Kanban)';
+    if (!currentUser) return;
+
+    const { data: myTasks, error } = await supabase
+        .from('department_tasks')
+        .select('*')
+        .eq('assigned_to', currentUser.uid)
+        .order('created_at', { ascending: false });
+
+    if (error) {
+        container.innerHTML = '<div class="card">Erro ao carregar demandas.</div>';
+        return;
+    }
+
+    const columns = ['Nem comecei', 'Em andamento', 'Quase concluído', 'Concluído'];
+    
+    container.innerHTML = `
+        <div class="kanban-board">
+            ${columns.map(col => `
+                <div class="kanban-column" ondragover="window.allowDropTask(event)" ondrop="window.dropTask(event, '${col}')">
+                    <h4>${col}</h4>
+                    <div class="kanban-cards-container" id="kcol-${col}">
+                        ${myTasks?.filter(p => p.status === col).map(p => `
+                            <div class="kanban-card" draggable="true" ondragstart="window.dragTask(event, '${p.id}')">
+                                <h5>${p.title}</h5>
+                                <p>${p.description || 'Sem descrição'}</p>
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 0.8rem;">
+                                    <span style="font-size: 0.7rem; color: #9ca3af;">🕒 ${new Date(p.created_at).toLocaleDateString('pt-br')}</span>
+                                    <button onclick="window.openNotesModal('${p.id}', \`${(p.notes || '').replace(/`/g, '\\`')}\`)" style="padding: 0.2rem 0.5rem; font-size: 0.7rem; background: rgba(59, 130, 246, 0.2); color: #60a5fa; border: none; border-radius: 4px;">📝 Notas</button>
+                                </div>
+                            </div>
+                        `).join('') || '<div style="text-align:center; color:rgba(255,255,255,0.1); padding:2rem; font-size:0.8rem;">Vazio</div>'}
+                    </div>
+                </div>
+            `).join('')}
+        </div>
+    `;
+}
+
+// Global Task Drag & Drop Logic
+window.allowDropTask = (e) => e.preventDefault();
+window.dragTask = (e, taskId) => e.dataTransfer.setData("text/plain", taskId);
+
+window.dropTask = async (e, newStatus) => {
+    e.preventDefault();
+    const taskId = e.dataTransfer.getData("text/plain");
+    if (!taskId) return;
+
+    const updateData = { status: newStatus };
+    const now = new Date().toISOString();
+    if (newStatus === 'Em andamento') updateData.started_at = now;
+    if (newStatus === 'Quase concluído') updateData.almost_done_at = now;
+    if (newStatus === 'Concluído') updateData.completed_at = now;
+
+    const { error } = await supabase.from('department_tasks').update(updateData).eq('id', taskId);
+    if (error) alert("Erro: " + error.message);
+    else loadContent(); // Recarrega a view atual (demandas)
+};
+
+// Notes modal logic
+let editingTaskId = null;
+window.openNotesModal = (taskId, currentNotes) => {
+    editingTaskId = taskId;
+    document.getElementById('task-notes-input').value = currentNotes || '';
+    document.getElementById('notes-modal').style.display = 'flex';
+}
+window.closeNotesModal = () => { document.getElementById('notes-modal').style.display = 'none'; editingTaskId = null; }
+
+window.saveTaskNotes = async () => {
+    if (!editingTaskId) return;
+    const notes = document.getElementById('task-notes-input').value;
+    const { error } = await supabase.from('department_tasks').update({ notes }).eq('id', editingTaskId);
+    
+    if (error) alert("Erro ao salvar: " + error.message);
+    else {
+        alert("Notas salvas!");
+        window.closeNotesModal();
+        if (currentPage === 'demandas') renderMinhasDemandas(document.getElementById('dashboard-content'));
+    }
+}
+
+// Analise de Desempenho (Diretor / RH)
+window.analisarDesempenho = async (userId) => {
+    if (!window.diretoriaData) return;
+    
+    const member = window.diretoriaData.deptMembers.find(m => m.uid === userId);
+    const mTasks = window.diretoriaData.deptTasks.filter(t => t.assigned_to === userId);
+    
+    if (!member) return;
+
+    // Fill header
+    document.getElementById('perf-name').innerText = member.name;
+    document.getElementById('perf-role').innerText = member.role + ' - ' + member.dept;
+    document.getElementById('perf-avatar').src = member.photoURL || 'https://via.placeholder.com/60';
+
+    // Populate History
+    const historyHtml = mTasks.map(t => {
+        let statusColor = '#9ca3af';
+        if(t.status === 'Nem comecei') statusColor = '#ef4444';
+        else if(t.status === 'Em andamento') statusColor = '#3b82f6';
+        else if(t.status === 'Quase concluído') statusColor = '#f59e0b';
+        else if(t.status === 'Concluído') statusColor = '#10b981';
+
+        return `
+            <div style="border-bottom: 1px solid rgba(255,255,255,0.05); padding: 0.8rem 0;">
+                <div style="display:flex; justify-content:space-between; margin-bottom: 0.3rem;">
+                    <b>${t.title}</b>
+                    <span style="font-size: 0.75rem; background: ${statusColor}20; color: ${statusColor}; padding: 0.2rem 0.5rem; border-radius: 12px;">${t.status}</span>
+                </div>
+                ${t.notes ? `<p style="font-size:0.8rem; color:#9ca3af; margin:0; padding:0.5rem; background:rgba(0,0,0,0.3); border-radius:4px;"><i>"${t.notes}"</i></p>` : `<span style="font-size:0.75rem; color:#6b7280;">Nenhuma nota do membro.</span>`}
+            </div>
+        `;
+    }).join('') || '<p style="color:#6b7280; font-size:0.85rem;">Nenhuma demanda associada.</p>';
+    document.getElementById('perf-history').innerHTML = historyHtml;
+
+    // Calculate Analytics
+    const completedTasks = mTasks.filter(t => t.status === 'Concluído' && t.completed_at);
+    
+    let totalDeliveryHours = 0;
+    let totalStartHours = 0;
+    let totalExecHours = 0;
+    let totalRevHours = 0;
+
+    const diffHours = (from, to) => Math.max(0, (new Date(to) - new Date(from)) / (1000 * 60 * 60));
+
+    let phasesHtml = '';
+    
+    if (completedTasks.length === 0) {
+        document.getElementById('perf-phases').innerHTML = '<p style="color:#6b7280; font-size:0.85rem;">Sem tarefas concluídas com tracking disponível.</p>';
+        document.getElementById('perf-kpis').innerHTML = `
+            <div class="card" style="padding: 1rem;"><small>Entregas</small><h2>0</h2></div>
+        `;
+    } else {
+        const lastTask = completedTasks[0]; // ordered by created_at desc, assumes recent
+        let lastTaskTime = 0;
+
+        completedTasks.forEach(t => {
+            const startH = diffHours(t.created_at, t.started_at || t.completed_at);
+            const execH = diffHours(t.started_at || t.created_at, t.almost_done_at || t.completed_at);
+            const revH = diffHours(t.almost_done_at || t.started_at || t.created_at, t.completed_at);
+            
+            totalStartHours += startH;
+            totalExecHours += execH;
+            totalRevHours += revH;
+
+            const totalIter = startH + execH + revH;
+            totalDeliveryHours += totalIter;
+
+            if (t.id === lastTask.id) lastTaskTime = totalIter;
+        });
+
+        const n = completedTasks.length;
+        const avgTotal = totalDeliveryHours / n;
+        const avgStart = totalStartHours / n;
+        const avgExec = totalExecHours / n;
+        const avgRev = totalRevHours / n;
+
+        // Bottleneck math
+        let bottleneckLabel = 'Início (Procrastinação)';
+        let maxAvg = avgStart;
+
+        if (avgExec > maxAvg) { maxAvg = avgExec; bottleneckLabel = 'Execução (Andamento)'; }
+        if (avgRev > maxAvg) { maxAvg = avgRev; bottleneckLabel = 'Revisão (Finalização)'; }
+
+        // Tendencia
+        const variation = avgTotal > 0 ? ((lastTaskTime - avgTotal) / avgTotal) * 100 : 0;
+        const trendText = variation > 0 ? `Atrasou ${variation.toFixed(1)}% a mais que a média` : `Entregou ${Math.abs(variation).toFixed(1)}% mais RÁPIDO`;
+        const trendColor = variation <= 0 ? '#10b981' : '#ef4444';
+
+        document.getElementById('perf-kpis').innerHTML = `
+            <div class="card" style="padding: 1rem;"><small>Entregas Históricas</small><h2 style="font-size:1.5rem;">${n}</h2></div>
+            <div class="card" style="padding: 1rem;"><small>Tempo Médio (Total)</small><h2 style="font-size:1.5rem; color:#3b82f6;">${avgTotal.toFixed(1)}h</h2></div>
+            <div class="card" style="padding: 1rem; border-left: 3px solid ${trendColor};"><small>Última Entrega</small><h4 style="font-size:0.9rem; color:${trendColor}; margin-top:0.5rem;">${trendText}</h4></div>
+        `;
+
+        document.getElementById('perf-phases').innerHTML = `
+            <p style="margin-bottom:0.5rem; font-size:0.85rem;"><b>Gargalo Principal:</b> <span style="color:#ef4444">${bottleneckLabel}</span> (${maxAvg.toFixed(1)}h em média)</p>
+            <div style="margin-top: 1.5rem;">
+                <div style="display:flex; justify-content:space-between; font-size:0.8rem; margin-bottom:0.3rem;"><span style="color:#9ca3af;">Demora p/ Iniciar</span><span>${avgStart.toFixed(1)}h</span></div>
+                <div style="width:100%; background:rgba(255,255,255,0.05); height:8px; border-radius:4px; margin-bottom:1rem;"><div style="width:${Math.min(100, (avgStart/avgTotal)*100)}%; background:#ef4444; height:100%; border-radius:4px;"></div></div>
+
+                <div style="display:flex; justify-content:space-between; font-size:0.8rem; margin-bottom:0.3rem;"><span style="color:#9ca3af;">Tempo de Execução</span><span>${avgExec.toFixed(1)}h</span></div>
+                <div style="width:100%; background:rgba(255,255,255,0.05); height:8px; border-radius:4px; margin-bottom:1rem;"><div style="width:${Math.min(100, (avgExec/avgTotal)*100)}%; background:#3b82f6; height:100%; border-radius:4px;"></div></div>
+
+                <div style="display:flex; justify-content:space-between; font-size:0.8rem; margin-bottom:0.3rem;"><span style="color:#9ca3af;">Revisão / Finishing</span><span>${avgRev.toFixed(1)}h</span></div>
+                <div style="width:100%; background:rgba(255,255,255,0.05); height:8px; border-radius:4px; margin-bottom:1rem;"><div style="width:${Math.min(100, (avgRev/avgTotal)*100)}%; background:#f59e0b; height:100%; border-radius:4px;"></div></div>
+            </div>
+        `;
+    }
+
+    document.getElementById('perf-modal').style.display = 'flex';
 }

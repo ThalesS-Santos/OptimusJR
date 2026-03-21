@@ -1,6 +1,9 @@
 -- Script para criação da tabela de Leads no Supabase
 
-CREATE TABLE IF NOT EXISTS leads (
+-- Deleta com segurança a tabela anterior e suas políticas (caso existam) para recriar do zero
+DROP TABLE IF EXISTS leads CASCADE;
+
+CREATE TABLE leads (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
     name TEXT NOT NULL,
@@ -8,10 +11,10 @@ CREATE TABLE IF NOT EXISTS leads (
     pain TEXT NOT NULL,
     probability TEXT NOT NULL,
     status TEXT DEFAULT 'Novo' NOT NULL,
-    created_by UUID REFERENCES auth.users(id) ON DELETE SET NULL
+    created_by UUID REFERENCES public.users(uid) ON DELETE SET NULL
 );
 
--- Ativar RLS (Row Level Security) caso deseje, mas configuraremos políticas abertas para uso interno da EJ
+-- Ativar RLS (Row Level Security)
 ALTER TABLE leads ENABLE ROW LEVEL SECURITY;
 
 -- Política de Leitura (Todos os usuários autenticados da EJ podem ver os leads)
@@ -26,13 +29,13 @@ ON leads FOR INSERT
 TO authenticated 
 WITH CHECK (true);
 
--- Política de Atualização (Opcional - Caso queira atualizar status no futuro)
+-- Política de Atualização
 CREATE POLICY "Leads podem ser atualizados por usuários autenticados" 
 ON leads FOR UPDATE 
 TO authenticated 
 USING (true);
 
--- Política de Deleção (Apenas administradores poderiam deletar um lead - ou todos os autenticados)
+-- Política de Deleção
 CREATE POLICY "Leads podem ser deletados por usuários autenticados" 
 ON leads FOR DELETE 
 TO authenticated 
