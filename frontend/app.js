@@ -1,25 +1,169 @@
 import { supabase } from './supabase-config.js';
 import { calendarEvents } from './events.js';
 
+// --- API DE ANIMAÇÃO DE XP ---
+window.playXpAnimation = (gainedXp) => {
+    const floater = document.createElement('div');
+    floater.innerText = `+${gainedXp} XP!`;
+    floater.style.position = 'fixed';
+    floater.style.top = '60px'; 
+    floater.style.right = '40px'; // Direita (perto do widget de perfil)
+    floater.style.color = '#10b981'; // Verde bonito
+    floater.style.fontWeight = 'bold';
+    floater.style.fontSize = '1.3rem';
+    floater.style.zIndex = '99999';
+    floater.style.pointerEvents = 'none';
+    floater.style.textShadow = '0px 2px 10px rgba(0,0,0,0.8)';
+    floater.style.transition = 'all 1.5s cubic-bezier(0.2, 0.8, 0.2, 1)';
+    floater.style.transform = 'translateY(0) scale(1)';
+    floater.style.opacity = '1';
+    
+    document.body.appendChild(floater);
+    
+    // Inicia a animação (subir e desaparecer)
+    requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+            floater.style.transform = 'translateY(-50px) scale(1.2)';
+            floater.style.opacity = '0';
+        });
+    });
+    
+    // Remove o nó depois de concluída a transição
+    setTimeout(() => { if(floater.parentNode) floater.parentNode.removeChild(floater); }, 1500);
+};
+
 // --- NOTIFICAÇÕES (EmailJS) ---
-async function sendEmailNotification(subjectParams) {
+async function sendEmailNotification(subjectParams, targetEmail = null) {
     try {
-        const { data: users, error } = await supabase.from('users').select('email');
-        if (error) throw error;
+        let emails = [];
+        if (targetEmail) {
+            emails = [targetEmail];
+        } else {
+            const { data: users, error } = await supabase.from('users').select('email');
+            if (error) throw error;
+            emails = users.map(u => u.email).filter(Boolean);
+        }
         
-        const emails = users.map(u => u.email).filter(Boolean);
-        
-        // Disparar um email para cada membro
         for (const email of emails) {
+            const htmlMessage = `
+            <div style="font-family: sans-serif; background: #0a0a0a; color: #fff; padding: 30px; border-radius: 8px; border: 1px solid #333; max-width: 600px; margin: 0 auto;">
+                <h2 style="color: #10b981; border-bottom: 2px solid #10b981; padding-bottom: 10px; margin-top: 0;">🛎️ Optimus JR - Notificação</h2>
+                <h3 style="color: #60a5fa; margin-top: 20px;">${subjectParams.subject}</h3>
+                <p style="font-size: 16px; line-height: 1.6; color: #e5e7eb;">${subjectParams.message}</p>
+                <br>
+                <div style="text-align: center; margin-top: 30px;">
+                    <a href="https://optimusjr.com.br" style="background: #3b82f6; color: #fff; text-decoration: none; padding: 12px 24px; border-radius: 6px; font-weight: bold;">Acessar Sistema</a>
+                </div>
+                <hr style="border: none; border-top: 1px solid #333; margin: 30px 0 20px 0;">
+                <p style="font-size: 11px; color: #6b7280; text-align: center;">Esta é uma mensagem automática gerada pelo seu Optimus ERP.</p>
+            </div>
+            `;
+
             emailjs.send('service_2blmih4', 'template_7j2d1ml', {
-                ...subjectParams,
-                to_email: email  // emailjs usará {{to_email}} se configurado no cabeçalho do template
+                to_email: email,
+                to_name: currentUser ? currentUser.name : 'Membro',
+                subtitulo: subjectParams.subject,
+                mensagem_corpo: subjectParams.message,
+                detalhes: "Faça login no sistema Optimus JR para tomar as próximas ações."
             }).catch(console.error);
         }
     } catch (err) {
         console.error("Erro ao carregar lista de emails:", err);
     }
 }
+
+// --- SISTEMA DE NOTIFICAÇÕES (BELL) ---
+window.triggerNotification = async (targetUserId, title, message) => {
+    try {
+        await supabase.from('notifications').insert([{
+            user_id: targetUserId,
+            title,
+            message,
+            is_read: false
+        }]);
+        if (currentUser && currentUser.uid === targetUserId) {
+            window.fetchNotifications();
+        }
+} catch(e) { console.error("Notificação Insert Err:", e); }
+}
+
+window.notifyDirectors = async (title, message) => {
+    if (!currentUser) return;
+    const { data: users } = await supabase.from('users').select('uid, role, dept');
+    if(users) {
+        const toNotify = users.filter(u => u.role === 'Presidente' || (u.role === 'Diretor' && u.dept === currentUser.dept));
+        toNotify.forEach(d => window.triggerNotification(d.uid, title, message));
+    }
+}
+
+window.notifyGlobalDirectors = async (title, message) => {
+    const { data: users } = await supabase.from('users').select('uid').in('role', ['Diretor', 'Presidente']);
+    if(users) users.forEach(u => window.triggerNotification(u.uid, title, message));
+}
+
+window.fetchNotifications = async () => {
+    if(!currentUser) return;
+    const { data: notifs, error } = await supabase
+        .from('notifications')
+        .select('*')
+        .eq('user_id', currentUser.uid)
+        .order('created_at', { ascending: false })
+        .limit(15);
+        
+    if(error) return;
+    
+    const unreadCount = notifs.filter(n => !n.is_read).length;
+    const badge = document.getElementById('notification-badge');
+    if(badge) {
+        badge.innerText = unreadCount > 99 ? '99+' : unreadCount;
+        if(unreadCount > 0) badge.classList.remove('hidden');
+        else badge.classList.add('hidden');
+    }
+    
+    const listHtml = document.getElementById('notification-list');
+    if(!listHtml) return;
+    
+    if(notifs.length === 0) {
+        listHtml.innerHTML = '<li style="padding: 1rem; text-align: center; color: var(--text-muted); font-size: 0.8rem;">Sua caixa de notificações está vazia.</li>';
+        return;
+    }
+    
+    listHtml.innerHTML = notifs.map(n => `
+        <li class="notification-item ${!n.is_read ? 'unread' : ''}" onclick="window.markAsRead('${n.id}', event)">
+            <h4>${n.title}</h4>
+            <p>${n.message}</p>
+            <small>${new Date(n.created_at).toLocaleString('pt-br')}</small>
+        </li>
+    `).join('');
+}
+
+window.toggleNotifications = (e) => {
+    e.stopPropagation();
+    const dd = document.getElementById('notification-dropdown');
+    if(dd) {
+        dd.classList.toggle('active');
+        if(dd.classList.contains('active')) window.fetchNotifications();
+    }
+}
+
+window.markAsRead = async (notifId, e) => {
+    if(e) e.stopPropagation();
+    await supabase.from('notifications').update({ is_read: true }).eq('id', notifId);
+    window.fetchNotifications();
+}
+
+window.markAllAsRead = async (e) => {
+    if(e) e.stopPropagation();
+    if(!currentUser) return;
+    await supabase.from('notifications').update({ is_read: true }).eq('user_id', currentUser.uid).eq('is_read', false);
+    window.fetchNotifications();
+}
+
+// Fechar dropdown ao clicar fora
+document.addEventListener('click', () => {
+    const dd = document.getElementById('notification-dropdown');
+    if(dd) dd.classList.remove('active');
+});
 
 // --- CUSTOM DIALOGS ---
 window.customAlert = (title, message, icon = '🔔') => {
@@ -145,7 +289,8 @@ async function checkUserInPostgres(authUser) {
             photoURL: authUser.user_metadata?.avatar_url || 'https://via.placeholder.com/40',
             role: "Membro", // Default
             dept: "Geral",   // Default
-            bio: "Novo membro da Optimus JR"
+            bio: "Novo membro da Optimus JR",
+            xp: 0
         };
         const { data: insertedUser, error: insertError } = await supabase
             .from('users')
@@ -164,30 +309,41 @@ async function checkUserInPostgres(authUser) {
 
 supabase.auth.onAuthStateChange((event, session) => {
     if (session?.user) {
-        checkUserInPostgres(session.user);
+        if (!currentUser) checkUserInPostgres(session.user);
     } else {
         views.dashboard.classList.add('hidden');
         views.auth.classList.remove('hidden');
+        currentUser = null;
     }
 });
 
 // --- NAVIGATION ---
+
+window.updateHeaderWidget = () => {
+    if(!currentUser) return;
+    const avatar = currentUser.photoURL || 'https://via.placeholder.com/40';
+    const widget = document.getElementById('user-profile-widget');
+    if(widget) {
+        widget.innerHTML = `
+            <div style="display:flex; align-items:center; gap:1rem;">
+                <div style="text-align: right;">
+                    <span style="display:block; font-weight:bold;">${currentUser.name || 'Carregando...'}</span>
+                    <small style="color: var(--text-muted)">${currentUser.role || ''} • ${currentUser.dept || ''} <span style="margin-left: 0.5rem; color: #f59e0b;">⭐ ${currentUser.xp || 0} XP</span></small>
+                </div>
+                <img src="${avatar}" style="width:40px; height:40px; border-radius:50%; border:2px solid var(--primary); object-fit: cover;">
+            </div>
+        `;
+    }
+};
 
 function showDashboard() {
     views.auth.classList.add('hidden');
     views.dashboard.classList.remove('hidden');
     
     // Header Info
-    const avatar = currentUser?.photoURL || 'https://via.placeholder.com/40';
-    document.getElementById('user-profile-widget').innerHTML = `
-        <div style="display:flex; align-items:center; gap:1rem;">
-            <div style="text-align: right;">
-                <span style="display:block; font-weight:bold;">${currentUser?.name || 'Carregando...'}</span>
-                <small style="color: var(--text-muted)">${currentUser?.role || ''} • ${currentUser?.dept || ''}</small>
-            </div>
-            <img src="${avatar}" style="width:40px; height:40px; border-radius:50%; border:2px solid var(--primary); object-fit: cover;">
-        </div>
-    `;
+    window.updateHeaderWidget();
+
+    window.fetchNotifications();
 
     if (currentUser.role === 'Diretor' || currentUser.role === 'Presidente') {
         const navDir = document.getElementById('nav-diretoria');
@@ -276,6 +432,7 @@ async function renderHome(container) {
         const txs = txsResult.data || [];
         const projects = projsResult.data || [];
         const members = usersResult.data || [];
+        const topPerformersXP = [...members].sort((a,b) => (b.xp || 0) - (a.xp || 0)).slice(0, 5);
 
         // Cálculos e KPIs
         const now = new Date();
@@ -371,6 +528,21 @@ async function renderHome(container) {
                     <div style="height: 250px; position: relative;"><canvas id="financialChart"></canvas></div>
                 </div>
                 <div class="card">
+                    <h3>🏆 Top Performers (Gamificação)</h3>
+                    <div style="margin-top: 1rem; display: flex; flex-direction: column; gap: 0.8rem;">
+                        ${topPerformersXP.map((tp, idx) => `
+                            <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.6rem; background: rgba(255,255,255,0.02); border-radius: 8px; border: 1px solid rgba(255,255,255,0.05);">
+                                <div style="display: flex; align-items: center; gap: 0.8rem;">
+                                    <h3 style="color: ${idx===0 ? '#f59e0b' : idx===1 ? '#9ca3af' : idx===2 ? '#b45309' : '#fff'}; margin: 0; min-width: 20px;">#${idx+1}</h3>
+                                    <img src="${tp.photoURL || 'https://via.placeholder.com/30'}" style="width: 30px; height: 30px; border-radius: 50%; object-fit: cover;">
+                                    <span style="font-size: 0.9rem;">${tp.name}</span>
+                                </div>
+                                <span style="color: #f59e0b; font-weight: bold; font-size: 0.85rem;">⭐ ${tp.xp || 0} XP</span>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+                <div class="card">
                     <h3>🍕 Despesas por Categoria</h3>
                     <div style="height: 250px; position: relative;"><canvas id="categoryChart"></canvas></div>
                 </div>
@@ -417,7 +589,7 @@ async function renderProfile(container) {
                     <label for="file-upload" style="position: absolute; bottom: 0; right: 0; background: var(--primary); padding: 0.5rem; border-radius: 50%; cursor: pointer;">📷</label>
                     <input type="file" id="file-upload" accept="image/*" style="display: none;" onchange="uploadPhoto(this)">
                 </div>
-                <h2 style="margin-top: 1rem;">${currentUser.name}</h2>
+                <h2 style="margin-top: 1rem;">${currentUser.name} <span style="font-size: 1rem; color: #f59e0b; vertical-align: middle; margin-left: 0.5rem;">⭐ ${currentUser.xp || 0} XP</span></h2>
                 <p class="text-muted">${currentUser.email}</p>
             </div>
 
@@ -555,6 +727,7 @@ async function renderMembros(container) {
     container.innerHTML = `
         <div class="card">
             <h3>Nossa Equipe</h3>
+            <div style="overflow-x: auto; width: 100%;">
             <table>
                 <thead>
                     <tr>
@@ -640,7 +813,12 @@ async function renderProjetos(container) {
                     <div class="kanban-column" ondragover="window.allowDrop(event)" ondrop="window.dropProject(event, '${col}')">
                         <h4>${col}</h4>
                         <div class="kanban-cards-container" id="kanban-col-${col}">
-                            ${projects?.filter(p => p.status === col).map(p => `
+                            ${projects?.filter(p => p.status === col).map(p => {
+                                let colIdx = columns.indexOf(col);
+                                let backBtn = colIdx > 0 ? `<button onclick="window.moveProjectMobile('${p.id}', '${columns[colIdx-1]}')" style="background:transparent; border:none; padding:0; font-size:1.2rem; cursor:pointer;" title="Recuar">⬅️</button>` : '';
+                                let nextBtn = colIdx < columns.length - 1 ? `<button onclick="window.moveProjectMobile('${p.id}', '${columns[colIdx+1]}')" style="background:transparent; border:none; padding:0; font-size:1.2rem; cursor:pointer;" title="Avançar">➡️</button>` : '';
+
+                                return `
                                 <div class="kanban-card" draggable="true" ondragstart="window.dragProject(event, '${p.id}')">
                                     <h5>${p.name}</h5>
                                     <p>${p.description || 'Sem descrição.'}</p>
@@ -648,12 +826,18 @@ async function renderProjetos(container) {
                                         💰 <b>R$ ${Number(p.value || 0).toFixed(2)}</b><br>
                                         📅 <b>Até:</b> ${p.deadline ? new Date(p.deadline).toLocaleDateString('pt-BR') : 'A definir'}
                                     </div>
-                                    <div class="kanban-card-footer">
+                                    <div class="kanban-card-footer" style="padding-bottom: 0.5rem; border-bottom: 1px solid rgba(255,255,255,0.03); margin-bottom: 0.5rem;">
                                         <span>👤 ${p.users?.name || 'Vago'}</span>
                                         ${canManageProjetos ? `<button onclick="window.deleteProject('${p.id}')" style="background:transparent; color:#ef4444; padding:0; width:auto; font-size:0.8rem;" title="Deletar">🗑️</button>` : ''}
                                     </div>
+                                    <div style="display: flex; justify-content: space-between; align-items: center; padding-top: 0.5rem;">
+                                        <div>${backBtn}</div>
+                                        <span style="font-size: 0.7rem; color: var(--text-muted);">Mover</span>
+                                        <div>${nextBtn}</div>
+                                    </div>
                                 </div>
-                            `).join('') || '<div style="text-align:center; color:rgba(255,255,255,0.1); padding:2rem; font-size:0.8rem;">Vazio</div>'}
+                                `;
+                            }).join('') || '<div style="text-align:center; color:rgba(255,255,255,0.1); padding:2rem; font-size:0.8rem;">Vazio</div>'}
                         </div>
                     </div>
                 `).join('')}
@@ -677,6 +861,8 @@ async function renderProjetos(container) {
                     alert("Erro ao criar projeto: " + insertError.message);
                 } else {
                     alert("Projeto criado com sucesso!");
+                    window.notifyDirectors('Novo Projeto 🌟', `O projeto "${name}" foi adicionado ao sistema!`);
+                    window.notifyGlobalDirectors('Novo Projeto 🌟', `O projeto "${name}" foi adicionado ao sistema!`);
                     renderProjetos(container);
                 }
             });
@@ -692,28 +878,30 @@ window.allowDrop = (e) => {
     e.preventDefault();
 }
 
+window.moveProjectMobile = (id, newStatus) => {
+    window.dropProject({ preventDefault: () => {}, dataTransfer: { getData: () => id } }, newStatus);
+}
+
 window.dragProject = (e, projectId) => {
     e.dataTransfer.setData("text/plain", projectId);
 }
 
-window.dropProject = async (e, newStatus) => {
+window.dropProject = async (e, newPhase) => {
     e.preventDefault();
     const projectId = e.dataTransfer.getData("text/plain");
+    if (!projectId) return;
 
-    if (projectId) {
-        const { error } = await supabase
-            .from('projects')
-            .update({ status: newStatus })
-            .eq('id', projectId);
+    // Pega o projeto atual para notificação
+    const { data: currentP } = await supabase.from('projects').select('name, status').eq('id', projectId).single();
 
-        if (error) {
-            alert("Erro ao mover projeto: " + error.message);
-        } else {
-            const container = document.getElementById('dashboard-content');
-            if (currentPage === 'projetos') {
-                renderProjetos(container);
-            }
+    const { error } = await supabase.from('projects').update({ status: newPhase }).eq('id', projectId);
+    
+    if (error) alert("Erro: " + error.message);
+    else {
+        if(currentP && currentP.status !== newPhase) {
+            window.notifyGlobalDirectors('Projeto Avançou', `O projeto "${currentP.name}" mudou para a fase: ${newPhase}`);
         }
+        renderProjetos(document.getElementById('dashboard-content')); 
     }
 }
 
@@ -742,7 +930,7 @@ function renderHistoria(container) {
                 <h3 style="color: #3b82f6; margin-bottom: 1rem;">👁️ Visão</h3>
                 <p style="font-size: 0.95rem; line-height: 1.6; color: #e2e8f0;">Atuar de forma constante no mercado de automação, oferecendo soluções de alta qualidade com preços justos, gerando conforto, praticidade e economia.</p>
             </div>
-            <div class="card" style="border-top: 4px solid #eab308;">
+            <div class="card" style="border-top: 44px solid #eab308;">
                 <h3 style="color: #eab308; margin-bottom: 1rem;">💎 Valores</h3>
                 <ul style="list-style: none; padding: 0; line-height: 2; font-size: 0.95rem; color: #e2e8f0;">
                     <li>🔹 Autonomia</li>
@@ -884,6 +1072,16 @@ window.handleFinanceSubmit = async (type) => {
         alert("Erro ao registrar: " + error.message);
     } else {
         alert(`${type} registrada com sucesso!`);
+        
+        // Notificação Global para Gastos
+        if (type === 'Despesa') {
+            const msgGasto = `Um novo gasto de R$ ${amount.toFixed(2)} (${description}) foi registrado por ${currentUser.name || 'Membro'}.`;
+            window.notifyGlobalDirectors('📉 Novo Gasto Registrado', msgGasto);
+            sendEmailNotification({
+                subject: '📉 Novo Gasto Registrado',
+                message: msgGasto
+            });
+        }
         renderFinancas(document.getElementById('dashboard-content'));
     }
 }
@@ -1034,6 +1232,7 @@ async function renderComercial(container) {
 
         <div class="card">
             <h3>Pipeline de Leads</h3>
+            <div style="overflow-x: auto; width: 100%;">
             <table>
                 <thead>
                     <tr><th>Cliente/Empresa</th><th>Contato</th><th>Dor/Necessidade</th><th>Probabilidade</th><th>Status</th></tr>
@@ -1084,6 +1283,7 @@ async function renderComercial(container) {
         const contact = document.getElementById('l-contact').value;
         const pain = document.getElementById('l-pain').value;
         const probability = document.getElementById('l-prob').value;
+        const status = 'Novo'; // Default status for new leads
 
         const submitBtn = e.target.querySelector('button[type="submit"]');
         submitBtn.innerText = "Salvando...";
@@ -1094,7 +1294,7 @@ async function renderComercial(container) {
             contact,
             pain,
             probability,
-            status: 'Novo',
+            status,
             created_by: currentUser.uid
         }]);
 
@@ -1104,6 +1304,15 @@ async function renderComercial(container) {
             submitBtn.disabled = false;
         } else {
             alert("Lead cadastrado com sucesso!");
+            
+            // Notificar a equipe de vendas / diretores (Sininho e Email)
+            const msgLead = `Um novo prospecto de cliente (${name}) foi adicionado. Contato: ${contact}. Status: ${status}`;
+            window.notifyGlobalDirectors('🚀 Novo Lead Cadastrado!', msgLead);
+            sendEmailNotification({
+                subject: '🚀 Novo Lead Cadastrado!',
+                message: msgLead
+            });
+
             window.closeLeadModal();
             renderComercial(container);
         }
@@ -1202,9 +1411,12 @@ async function renderCalendario(container) {
                                                 else if (ev.category === 'holiday') catClass = 'cat-holiday';
                                                 
                                                 return `
-                                                    <div class="calendar-event-tag ${catClass}" title="${ev.title}${ev.description ? ': ' + ev.description : ''}" style="position: relative;">
+                                                    <div class="calendar-event-tag ${catClass}" 
+                                                        title="📌 ${ev.title}&#10;📅 ${new Date(ev.date + 'T12:00:00').toLocaleDateString('pt-BR')}${ev.description ? '&#10;📝 ' + ev.description.replace(/'/g, '').replace(/\"/g, '') : ''}" 
+                                                        onclick="window.showEventDetails('${ev.title.replace(/'/g, "\\'")}', '${ev.date}', \`${(ev.description || '').replace(/`/g, '\\`')}\`)" 
+                                                        style="position: relative; cursor: pointer;">
                                                         ${ev.title}
-                                                        ${!loadError ? `<button onclick="window.deletarEvento('${ev.id}')" style="position: absolute; right: 2px; top: 0px; background: transparent; color: #fff; padding: 0; font-size: 0.6rem; border: none; opacity: 0.6; width: auto;" title="Excluir">×</button>` : ''}
+                                                        ${(!loadError && currentUser?.role === 'Presidente') ? `<button onclick="event.stopPropagation(); window.deletarEvento('${ev.id}')" style="position: absolute; right: 2px; top: 0px; background: transparent; color: #fff; padding: 0; font-size: 0.8rem; font-weight: bold; border: none; opacity: 0.8; width: auto; cursor: pointer;" title="Excluir (Somente Presidente)">×</button>` : ''}
                                                     </div>
                                                 `;
                                             }).join('')}
@@ -1220,11 +1432,15 @@ async function renderCalendario(container) {
 
         <!-- Modal Cadastro Evento -->
         <div id="cal-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); backdrop-filter: blur(4px); z-index: 999; justify-content: center; align-items: center;">
-            <div class="card" style="width: 400px; max-width: 90%; background: #111; padding: 2rem;">
+            <div class="card" style="width: 400px; max-width: 90%; background: #111; padding: 2rem; position: relative;">
+                <button onclick="document.getElementById('cal-modal').style.display='none'" style="position: absolute; right: 1rem; top: 1rem; background:transparent; border:none; color:white; font-size:1.5rem; width:auto; padding:0; cursor:pointer;">&times;</button>
                 <h3>📋 Novo Evento</h3>
                 <form id="cal-form" style="display: flex; flex-direction: column; gap: 1rem; margin-top: 1rem;">
                     <div><label>Título</label><input type="text" id="c-title" required style="width:100%;"></div>
-                    <div><label>Data</label><input type="date" id="c-date" required style="width:100%;"></div>
+                    <div style="display: flex; gap: 1rem;">
+                        <div style="flex:1;"><label>Data</label><input type="date" id="c-date" required style="width:100%;"></div>
+                        <div style="flex:1;"><label>Horário (opcional)</label><input type="time" id="c-time" style="width:100%;"></div>
+                    </div>
                     <div><label>Categoria</label>
                         <select id="c-cat" style="width: 100%;">
                             <option value="monthly">Mensal</option>
@@ -1243,6 +1459,31 @@ async function renderCalendario(container) {
     `;
 
     // Metodos do modal
+    window.showEventDetails = (title, date, desc) => {
+        document.getElementById('cd-title').innerText = title;
+        const dateObj = new Date(date + "T12:00:00");
+        document.getElementById('cd-date').innerText = dateObj.toLocaleDateString('pt-BR');
+        document.getElementById('cd-desc').innerText = desc || 'Nenhuma descrição adicional informada.';
+        document.getElementById('cal-details-modal').style.display = 'flex';
+    };
+
+    if (!document.getElementById('cal-details-modal')) {
+        const modalHtml = `
+            <div id="cal-details-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); backdrop-filter: blur(4px); z-index: 10000; justify-content: center; align-items: center;" onclick="if(event.target===this) this.style.display='none'">
+                <div class="card" style="width: 400px; max-width: 90%; background: #111; padding: 2rem; position: relative; margin: 0 auto; overflow-y: auto; max-height: 90vh;">
+                    <button onclick="document.getElementById('cal-details-modal').style.display='none'" style="position: absolute; right: 1rem; top: 1rem; background:transparent; border:none; color:white; font-size:1.5rem; width:auto; padding:0; cursor:pointer;">&times;</button>
+                    <h3 id="cd-title" style="color: #3b82f6; margin-bottom: 0.5rem; padding-right: 1.5rem;"></h3>
+                    <p style="color: #9ca3af; font-size: 0.9rem; margin-bottom: 1rem;">📅 <span id="cd-date"></span></p>
+                    <div id="cd-desc" style="white-space: pre-wrap; font-size: 0.9rem; line-height: 1.5; color: #e5e7eb; background: rgba(255,255,255,0.03); padding: 1rem; border-radius: 8px;"></div>
+                    <div style="margin-top: 1.5rem; text-align: right;">
+                        <button type="button" onclick="document.getElementById('cal-details-modal').style.display='none'" style="background: rgba(255,255,255,0.1); width: auto; padding: 0.5rem 1.5rem;">Fechar</button>
+                    </div>
+                </div>
+            </div>
+        `;
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
+    }
+
     window.openCalendarModal = () => { document.getElementById('cal-modal').style.display = 'flex'; }
     window.closeCalendarModal = () => { document.getElementById('cal-modal').style.display = 'none'; }
 
@@ -1252,7 +1493,12 @@ async function renderCalendario(container) {
         const title = document.getElementById('c-title').value;
         const date = document.getElementById('c-date').value;
         const category = document.getElementById('c-cat').value;
-        const description = document.getElementById('c-desc').value;
+        let description = document.getElementById('c-desc').value;
+
+        const time = document.getElementById('c-time')?.value;
+        if (time) {
+            description = `⏰ Horário demarcado: ${time}\n\n${description}`;
+        }
 
         const { error } = await supabase
             .from('calendar_events')
@@ -1409,6 +1655,27 @@ async function renderFeedbacks(container) {
             alert("Erro ao enviar: " + error.message);
         } else {
             alert("Enviado com sucesso!");
+            
+            // Gamificação: Feedback / Ideia
+            if (!isAnon) {
+                const gainedXp = type === 'ideia' ? 15 : 10;
+                const newXp = (currentUser.xp || 0) + gainedXp;
+                const { error: xpErr } = await supabase.from('users').update({ xp: newXp }).eq('uid', currentUser.uid);
+                if (!xpErr) {
+                    currentUser.xp = newXp;
+                    const emoji = type === 'ideia' ? '💡' : '🗣️';
+                    const msg = type === 'ideia' ? 'Ideia' : 'Feedback';
+                    window.updateHeaderWidget();
+                    window.playXpAnimation(gainedXp);
+                }
+            }
+            
+            // Notificar todos sobre a nova ideia/feedback
+            sendEmailNotification({
+                subject: `Nova ${type === 'ideia' ? 'Ideia 💡' : 'Avaliação (Feedback) 🗣️'}`,
+                message: `Um novo(a) ${type} foi adicionado(a) no mural do sistema: "${content}". Autor: ${author || 'Anônimo'}`
+            });
+
             window.closeFeedbackModal();
             renderFeedbacks(container); 
         }
@@ -1545,7 +1812,7 @@ async function renderDiretoria(container) {
             <div style="overflow-x: auto;">
                 <table>
                     <thead>
-                        <tr><th>Demanda</th><th>Responsável</th><th>Status</th><th>Ações</th></tr>
+                        <tr><th>Demanda</th><th>Responsável</th><th>Status</th><th>Ações</th><th style="text-align: right; width: 60px;">Excluir</th></tr>
                     </thead>
                     <tbody>
                         ${deptTasks.map(t => {
@@ -1564,12 +1831,15 @@ async function renderDiretoria(container) {
                                 nextBtn = `<button onclick="window.updateDemandaStatus('${t.id}', 'Concluído')" style="background:transparent; color:#10b981; padding:0; width:auto; font-size:0.85rem; border:1px solid #10b981; border-radius:4px; padding: 0.2rem 0.5rem; white-space: nowrap;">Concluir</button>`;
                             }
 
+                            let delBtn = `<button onclick="window.deletarDemanda('${t.id}')" title="Excluir Demanda" style="background: rgba(239, 68, 68, 0.1); color: #ef4444; padding: 0.4rem 0.6rem; border: none; border-radius: 6px; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 1rem;" onmouseover="this.style.background='rgba(239, 68, 68, 0.2)'" onmouseout="this.style.background='rgba(239, 68, 68, 0.1)'">🗑️</button>`;
+
                             return `
                             <tr>
                                 <td><b>${t.title}</b><br><small style="color: var(--text-muted);">${t.description}</small></td>
                                 <td>${t.users?.name || 'N/A'}</td>
                                 <td><span style="background: ${statusColor}20; color: ${statusColor}; padding: 0.2rem 0.6rem; border-radius: 12px; font-size: 0.75rem; white-space: nowrap;">${t.status}</span></td>
                                 <td>${nextBtn}</td>
+                                <td style="text-align: right;">${delBtn}</td>
                             </tr>
                             `;
                         }).join('') || '<tr><td colspan="4" style="text-align:center; color: var(--text-muted);">Nenhuma demanda cadastrada.</td></tr>'}
@@ -1602,6 +1872,18 @@ async function renderDiretoria(container) {
     window.openDemandaModal = () => document.getElementById('demanda-modal').style.display = 'flex';
     window.closeDemandaModal = () => document.getElementById('demanda-modal').style.display = 'none';
 
+    window.deletarDemanda = async (id) => {
+        if (!confirm("⚠️ Tem certeza que deseja excluir esta demanda internamente? Esta ação não pode ser desfeita.")) return;
+        
+        const { error } = await supabase.from('department_tasks').delete().eq('id', id);
+        
+        if (error) {
+            alert("Erro ao excluir demanda (Verifique as políticas RLS no Supabase): " + error.message);
+        } else {
+            renderDiretoria(document.getElementById('dashboard-content'));
+        }
+    }
+
     document.getElementById('demanda-form')?.addEventListener('submit', async (e) => {
         e.preventDefault();
         const title = document.getElementById('d-title').value;
@@ -1615,6 +1897,17 @@ async function renderDiretoria(container) {
         if (error) alert("Erro: " + error.message);
         else {
             alert("Demanda atribuída com sucesso!");
+            
+            // Gatilho 1: Notificação Direcionada
+            const assignedUser = deptMembers.find(m => m.uid === assigned_to);
+             if(assignedUser) {
+                  window.triggerNotification(assigned_to, 'Nova Demanda Atribuída', `Você recebeu a demanda: ${title}`);
+                  sendEmailNotification({
+                      subject: 'Nova Demanda Atribuída',
+                      message: `Olá ${assignedUser.name}, uma nova demanda (${title}) foi atribuída a você no OptimusERP.`
+                  }, assignedUser.email);
+             }
+
             window.closeDemandaModal();
             renderDiretoria(container);
         }
@@ -1628,6 +1921,45 @@ async function renderDiretoria(container) {
             updateData.almost_done_at = new Date().toISOString();
         } else if (newStatus === 'Concluído') {
             updateData.completed_at = new Date().toISOString();
+        }
+
+        const taskRef = deptTasks.find(t => t.id === id);
+
+        if (taskRef && taskRef.status !== newStatus) {
+             let xpGained = 0;
+             let phaseMsg = "";
+             
+             if (newStatus === 'Em andamento' && !taskRef.started_at) { xpGained = 10; phaseMsg = 'Em andamento'; }
+             else if (newStatus === 'Quase concluído' && !taskRef.almost_done_at) { xpGained = 20; phaseMsg = 'Quase concluído'; }
+             else if (newStatus === 'Concluído' && !taskRef.completed_at) { xpGained = 30; phaseMsg = 'Concluída'; }
+
+             if(xpGained > 0) {
+                 const { data: assignData } = await supabase.from('users').select('xp').eq('uid', taskRef.assigned_to).single();
+                 if(assignData) {
+                      const newXp = (assignData.xp || 0) + xpGained;
+                      const { error: xpErr } = await supabase.from('users').update({ xp: newXp }).eq('uid', taskRef.assigned_to);
+                      if(!xpErr) {
+                          if(taskRef.assigned_to === currentUser.uid) {
+                              currentUser.xp = newXp;
+                              window.updateHeaderWidget();
+                              window.playXpAnimation(xpGained);
+                          }
+                      } else {
+                          console.error("Erro ao atualizar XP (Diretoria):", xpErr);
+                          if(taskRef.assigned_to === currentUser.uid) {
+                              window.customAlert("⚠️ Erro de Sincronização", "O XP não pôde ser salvo. Contate o administrador.", "❌");
+                          }
+                      }
+                 }
+             }
+        }
+        
+        if(taskRef && taskRef.status !== newStatus) {
+              // Gatilho 2: Notificar Diretor (mesmo sendo a própria view do diretor)
+              const { data: director } = await supabase.from('users').select('uid').eq('dept', currentUser.dept).eq('role', 'Diretor').single();
+              if(director) {
+                   window.triggerNotification(director.uid, 'Evolução de Demanda (Diretoria)', `A demanda "${taskRef.title}" mudou para ${newStatus}`);
+              }
         }
 
         const { error } = await supabase.from('department_tasks').update(updateData).eq('id', id);
@@ -1665,16 +1997,27 @@ async function renderMinhasDemandas(container) {
                 <div class="kanban-column" ondragover="window.allowDropTask(event)" ondrop="window.dropTask(event, '${col}')">
                     <h4>${col}</h4>
                     <div class="kanban-cards-container" id="kcol-${col}">
-                        ${myTasks?.filter(p => p.status === col).map(p => `
+                        ${myTasks?.filter(p => p.status === col).map(p => {
+                            let colIdx = columns.indexOf(col);
+                            let backBtn = colIdx > 0 ? `<button onclick="window.moveTaskMobile('${p.id}', '${columns[colIdx-1]}')" style="background:transparent; border:none; padding:0; font-size:1.2rem; cursor:pointer;" title="Recuar">⬅️</button>` : '';
+                            let nextBtn = colIdx < columns.length - 1 ? `<button onclick="window.moveTaskMobile('${p.id}', '${columns[colIdx+1]}')" style="background:transparent; border:none; padding:0; font-size:1.2rem; cursor:pointer;" title="Avançar">➡️</button>` : '';
+
+                            return `
                             <div class="kanban-card" draggable="true" ondragstart="window.dragTask(event, '${p.id}')">
                                 <h5>${p.title}</h5>
                                 <p>${p.description || 'Sem descrição'}</p>
-                                <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 0.8rem;">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 0.8rem; border-bottom: 1px solid rgba(255,255,255,0.03); padding-bottom: 0.5rem; margin-bottom: 0.5rem;">
                                     <span style="font-size: 0.7rem; color: #9ca3af;">🕒 ${new Date(p.created_at).toLocaleDateString('pt-br')}</span>
                                     <button onclick="window.openNotesModal('${p.id}', \`${(p.notes || '').replace(/`/g, '\\`')}\`)" style="padding: 0.2rem 0.5rem; font-size: 0.7rem; background: rgba(59, 130, 246, 0.2); color: #60a5fa; border: none; border-radius: 4px;">📝 Notas</button>
                                 </div>
+                                <div style="display: flex; justify-content: space-between; align-items: center; padding-top: 0.5rem;">
+                                    <div>${backBtn}</div>
+                                    <span style="font-size: 0.7rem; color: var(--text-muted);">Mover Kanban</span>
+                                    <div>${nextBtn}</div>
+                                </div>
                             </div>
-                        `).join('') || '<div style="text-align:center; color:rgba(255,255,255,0.1); padding:2rem; font-size:0.8rem;">Vazio</div>'}
+                            `;
+                        }).join('') || '<div style="text-align:center; color:rgba(255,255,255,0.1); padding:2rem; font-size:0.8rem;">Vazio</div>'}
                     </div>
                 </div>
             `).join('')}
@@ -1686,6 +2029,10 @@ async function renderMinhasDemandas(container) {
 window.allowDropTask = (e) => e.preventDefault();
 window.dragTask = (e, taskId) => e.dataTransfer.setData("text/plain", taskId);
 
+window.moveTaskMobile = (id, newStatus) => {
+    window.dropTask({ preventDefault: () => {}, dataTransfer: { getData: () => id } }, newStatus);
+}
+
 window.dropTask = async (e, newStatus) => {
     e.preventDefault();
     const taskId = e.dataTransfer.getData("text/plain");
@@ -1696,6 +2043,39 @@ window.dropTask = async (e, newStatus) => {
     if (newStatus === 'Em andamento') updateData.started_at = now;
     if (newStatus === 'Quase concluído') updateData.almost_done_at = now;
     if (newStatus === 'Concluído') updateData.completed_at = now;
+
+    // GAMIFICAÇÃO & GATILHO 2
+    const { data: currentTask } = await supabase.from('department_tasks').select('*').eq('id', taskId).single();
+    if (currentTask && currentTask.status !== newStatus) {
+         let xpGained = 0;
+         let phaseMsg = "";
+         if (newStatus === 'Em andamento' && !currentTask.started_at) { xpGained = 10; phaseMsg = 'Em andamento'; }
+         else if (newStatus === 'Quase concluído' && !currentTask.almost_done_at) { xpGained = 20; phaseMsg = 'Quase concluído'; }
+         else if (newStatus === 'Concluído' && !currentTask.completed_at) { xpGained = 30; phaseMsg = 'Concluída'; }
+
+         if (xpGained > 0) {
+             const newXp = (currentUser.xp || 0) + xpGained;
+             const { error: xpErr } = await supabase.from('users').update({ xp: newXp }).eq('uid', currentUser.uid);
+             if(!xpErr) {
+                 currentUser.xp = newXp; 
+                 window.updateHeaderWidget(); 
+                 window.playXpAnimation(xpGained);
+             } else {
+                 console.error("Erro ao atualizar XP:", xpErr);
+                 window.customAlert("⚠️ Erro de Sincronização", "O XP não pôde ser salvo no banco. Verifique as permissões (RLS).", "❌");
+             }
+         }
+    }
+    
+    // Notificar os Diretores do Departamento
+    if (currentTask && currentTask.status !== newStatus) {
+         const { data: directors } = await supabase.from('users').select('uid').eq('dept', currentTask.department).in('role', ['Diretor', 'Presidente']);
+         if(directors) {
+             directors.forEach(d => {
+                 window.triggerNotification(d.uid, 'Evolução de Demanda 📌', `${currentUser.name} moveu a demanda "${currentTask.title}" para o status: ${newStatus}`);
+             });
+         }
+    }
 
     const { error } = await supabase.from('department_tasks').update(updateData).eq('id', taskId);
     if (error) alert("Erro: " + error.message);

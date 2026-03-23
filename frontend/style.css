@@ -312,15 +312,19 @@ button:hover {
 
 /* Responsive */
 @media (max-width: 768px) {
+    .container {
+        padding: 0 !important;
+    }
+
     .dashboard-layout {
         position: relative;
-        flex-direction: column; /* Evita quebrar layout fixed se houver scroll */
+        flex-direction: column;
     }
 
     /* Sidebar que desliza */
     .sidebar {
         position: fixed;
-        left: -260px; /* Escondido */
+        left: -260px;
         top: 0;
         bottom: 0;
         height: 100vh;
@@ -357,77 +361,104 @@ button:hover {
     }
 
     .main-content {
-        padding: 1rem;
-        height: 100vh; /* Garante scroll interno se sidebar for fixa */
+        padding: 1rem 0.6rem; /* Menos padding lateral em celulares */
+        height: 100vh;
     }
 
     .top-bar {
-        flex-direction: column;
-        align-items: flex-start;
-        gap: 1rem;
+        flex-direction: row; /* Manter na mesma linha principal */
+        flex-wrap: wrap; /* Permitir quebra se a tela for minúscula */
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.5rem;
+    }
+    
+    #page-title {
+        font-size: 1.25rem !important; /* Título menor para caber com o menu */
     }
 
     .user-profile-widget {
-        width: 100%;
-        justify-content: flex-end;
+        transform: scale(0.9); /* Um pouco menor para caber */
     }
 
-    /* --- Tabelas Responsivas Estilo Card --- */
-    table, thead, tbody, th, td, tr {
-        display: block;
+    /* --- Tabelas Responsivas --- 
+       Em vez de display: block (que esconde os dados),
+       vamos forçar os contêineres a darem SCROLL horizontal
+       permitindo que a tabela fique na formatação original! */
+    th, td {
+        white-space: nowrap !important;
+        padding: 0.8rem 1rem;
     }
-
-    /* Esconde o cabeçalho tradicional */
-    thead tr {
-        position: absolute;
-        top: -9999px;
-        left: -9999px;
-    }
-
-    tr {
-        margin-bottom: 1rem;
-        background: rgba(255, 255, 255, 0.02);
-        border: 1px solid rgba(255, 255, 255, 0.05);
-        border-radius: 12px;
-        padding: 0.8rem;
-    }
-
-    td {
-        border: none !important;
-        border-bottom: 1px solid rgba(255, 255, 255, 0.04) !important;
-        position: relative;
-        padding: 0.8rem 0.5rem 0.8rem 45% !important; /* Espaço para o label */
-        text-align: right;
-        display: flex;
-        justify-content: flex-end;
-        align-items: center;
-        min-height: 3.5rem;
-    }
-
-    td:last-child {
-        border-bottom: none !important;
-    }
-
-    /* Insere o nome da coluna via data-label */
-    td::before {
-        content: attr(data-label);
-        position: absolute;
-        left: 1.2rem;
-        width: 40%;
-        white-space: nowrap;
-        text-align: left;
-        font-weight: 600;
-        color: var(--text-muted);
-        font-size: 0.85rem;
-    }
-
-    td[data-label="Membro"] {
-        justify-content: flex-end;
+    
+    table {
+        min-width: 600px; /* Garante que ela estica e força o scroll da div pai */
     }
 
     /* Formulários em flex que precisam colapsar */
     form div {
         flex-direction: column !important;
+    }
+    
+    /* Fix para Notificações no Mobile (evitando quebrar a tela) */
+    .notification-dropdown {
+        position: fixed !important;
+        top: 70px !important;
+        right: 1rem !important;
+        left: 1rem !important;
+        width: auto !important;
+        max-width: none !important;
+    }
+    
+    /* Modais / Popups (Nova Demanda, Lead, etc) */
+    .card[style*="width: 450px"],
+    .card[style*="width: 500px"],
+    .card[style*="width: 600px"],
+    .card[style*="width: 700px"],
+    div[id$="-modal"] > .card {
+        width: 95% !important;
+        max-width: 100% !important;
+        padding: 1.5rem !important;
+        max-height: 90vh !important;
+        overflow-y: auto !important;
+        margin: 0 auto;
+    }
+    
+    /* Kanban Flow Trello-Style */
+    .kanban-board {
+        display: flex !important;
+        flex-direction: row !important;
+        overflow-x: auto;
+        scroll-snap-type: x mandatory;
+        padding-bottom: 1rem;
+        gap: 1rem;
+    }
+    
+    .kanban-column {
+        min-width: 85vw !important;
+        scroll-snap-align: center;
+        flex-shrink: 0;
+    }
+    
+    /* Notification Dropdown Mobile Fix */
+    .notification-dropdown {
+        position: fixed !important;
+        top: 65px !important;
+        left: 5% !important;
+        right: 5% !important;
+        width: 90% !important;
+        z-index: 10000;
+        max-height: 80vh;
+    }
+
+    /* Evitar que tabelas varem o card no Comercial/Finanças */
+    .card {
+        max-width: 100vw;
+        overflow-x: hidden;
+    }
+    div[style*="overflow-x: auto"] {
+        width: 100%;
+        max-width: 100%;
+        display: block;
     }
 }
 
@@ -657,3 +688,124 @@ button:hover {
 .cat-brasiljr { background: #f59e0b !important; }
 .cat-industry { background: #3b82f6 !important; }
 .cat-holiday { background: #ef4444 !important; }
+
+/* --- NOTIFICAÇÕES (BELL) --- */
+.notification-bell-container {
+    position: relative;
+    cursor: pointer;
+    margin-right: 1rem;
+    display: flex;
+    align-items: center;
+}
+
+.notification-bell-icon {
+    font-size: 1.4rem;
+    transition: transform 0.2s;
+}
+
+.notification-bell-container:hover .notification-bell-icon {
+    transform: scale(1.1);
+}
+
+.notification-badge {
+    position: absolute;
+    top: -5px;
+    right: -5px;
+    background: #ef4444; /* Vermelho choque */
+    color: white;
+    font-size: 0.65rem;
+    font-weight: bold;
+    border-radius: 50%;
+    width: 18px;
+    height: 18px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    box-shadow: 0 0 5px rgba(239, 68, 68, 0.5);
+}
+
+.notification-dropdown {
+    position: absolute;
+    top: 45px;
+    right: 0;
+    width: 320px;
+    background: #111418;
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 12px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.8);
+    display: none;
+    flex-direction: column;
+    z-index: 9999;
+    max-height: 400px;
+}
+
+.notification-dropdown.active {
+    display: flex;
+}
+
+.notification-dropdown-header {
+    padding: 1rem;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    font-weight: bold;
+    color: #fff;
+    font-size: 0.95rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.notification-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0;
+    margin: 0;
+    list-style: none;
+}
+
+.notification-item {
+    padding: 1rem;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+    transition: background 0.2s;
+    cursor: pointer;
+}
+
+.notification-item:last-child {
+    border-bottom: none;
+}
+
+.notification-item:hover {
+    background: rgba(255,255,255,0.03);
+}
+
+.notification-item.unread {
+    background: rgba(59, 130, 246, 0.05); /* Slight blue tint */
+}
+.notification-item.unread::before {
+    content: '';
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    background: #3b82f6;
+    border-radius: 50%;
+    margin-right: 8px;
+}
+
+.notification-item h4 {
+    margin: 0 0 0.3rem 0;
+    font-size: 0.85rem;
+    color: #e5e7eb;
+}
+
+.notification-item p {
+    margin: 0;
+    font-size: 0.75rem;
+    color: #9ca3af;
+    line-height: 1.4;
+}
+
+.notification-item small {
+    display: block;
+    margin-top: 0.4rem;
+    font-size: 0.65rem;
+    color: #6b7280;
+}

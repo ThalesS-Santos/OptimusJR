@@ -8,7 +8,7 @@
       href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="style.css" />
+    <link rel="stylesheet" href="style.css?v=4" />
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   </head>
   <body>
@@ -66,10 +66,28 @@
                    <button id="mobile-menu-btn" onclick="window.toggleMenu()" style="width: auto; padding: 0.5rem; background: transparent; font-size: 1.5rem; display: none; cursor:pointer;">☰</button>
                    <h2 id="page-title" style="font-size: 1.8rem; color: white;">Dashboard</h2>
                 </div>
-                <div class="user-profile-widget" id="user-profile-widget">
-                    <div style="text-align: right;">
-                        <span id="user-greeting" style="display:block; font-weight:bold;">Usuário</span>
-                        <small id="user-role-dept" style="color: var(--text-muted)">Cargo</small>
+                <div style="display: flex; align-items: center;">
+                    <!-- Notification Bell Container -->
+                    <div class="notification-bell-container" id="notification-bell-container" onclick="window.toggleNotifications(event)">
+                        <span class="notification-bell-icon">🔔</span>
+                        <div class="notification-badge hidden" id="notification-badge">0</div>
+                        
+                        <div class="notification-dropdown" id="notification-dropdown" onclick="event.stopPropagation();">
+                            <div class="notification-dropdown-header">
+                                Notificações
+                                <button onclick="window.markAllAsRead(event)" style="background:transparent; border:none; color:#3b82f6; font-size:0.75rem; width:auto; padding:0;">Marcar Lidas</button>
+                            </div>
+                            <ul class="notification-list" id="notification-list">
+                                <li style="padding: 1rem; text-align: center; color: var(--text-muted); font-size: 0.8rem;">Carregando...</li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <div class="user-profile-widget" id="user-profile-widget">
+                        <div style="text-align: right;">
+                            <span id="user-greeting" style="display:block; font-weight:bold;">Usuário</span>
+                            <small id="user-role-dept" style="color: var(--text-muted)">Cargo</small>
+                        </div>
                     </div>
                 </div>
             </header>
@@ -161,6 +179,6 @@
         </div>
     </div>
 
-    <script type="module" src="app.js"></script>
+    <script type="module" src="app.js?v=12"></script>
   </body>
 </html>
