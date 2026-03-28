@@ -1,6 +1,26 @@
 import { supabase } from './supabase-config.js';
 import { calendarEvents } from './events.js';
 
+// --- UX UTILITIES ---
+window.showToast = (msg, type='info') => { 
+    const container = document.getElementById('toast-container'); 
+    if(!container) return; 
+    const t = document.createElement('div'); 
+    t.className = 'toast toast-' + type; 
+    t.innerHTML = msg; 
+    container.appendChild(t); 
+    setTimeout(() => t.classList.add('show'), 10); 
+    setTimeout(() => { 
+        t.classList.remove('show'); 
+        setTimeout(() => t.remove(), 400); 
+    }, 4000); 
+};
+window.renderSkeleton = (type) => { 
+    if(type === 'cards') return '<div style="display:flex;gap:1rem;"><div class="skeleton skeleton-card" style="width:300px;"></div><div class="skeleton skeleton-card" style="width:300px;"></div></div>'; 
+    return '<div class="skeleton skeleton-title"></div><div class="skeleton skeleton-text"></div><div class="skeleton skeleton-text"></div>'; 
+};
+
+
 // --- API DE ANIMAÇÃO DE XP ---
 window.playXpAnimation = (gainedXp) => {
     const floater = document.createElement('div');
@@ -361,7 +381,7 @@ function showDashboard() {
     }
 
     if (!currentUser.role || currentUser.role === 'Membro' && currentUser.dept === 'Geral') {
-        alert("👋 Bem-vindo! Por favor, atualize o seu Cargo e Departamento no seu perfil.");
+        window.showToast("👋 Bem-vindo! Por favor, atualize o seu Cargo e Departamento no seu perfil.", 'success');
         navTo('perfil'); // Força ir pro perfil para preencher
     } else {
         navTo('home');
@@ -382,9 +402,9 @@ window.deleteProject = async (projectId) => {
         .eq('id', projectId);
         
     if (error) {
-        alert("Erro ao excluir: " + error.message);
+        window.showToast("Erro ao excluir: " + error.message, 'error');
     } else {
-        alert("Projeto excluído!");
+        window.showToast("Projeto excluído!", 'success');
         loadContent(); // Recarrega a view atual
     }
 }
@@ -672,10 +692,10 @@ window.uploadPhoto = async (input) => {
         const headerAvatar = document.querySelector('#user-profile-widget img');
         if(headerAvatar) headerAvatar.src = cacheBurstUrl;
         
-        alert("Foto atualizada!");
+        window.showToast("Foto atualizada!", 'success');
     } catch (err) {
         console.error(err);
-        alert("Erro ao enviar foto: " + err.message);
+        window.showToast("Erro ao enviar foto: " + err.message, 'error');
     }
 }
 
@@ -689,13 +709,13 @@ window.saveProfile = async () => {
     
     const presidents = allUsers?.filter(u => u.role === 'Presidente' && u.uid !== currentUser.uid) || [];
     if (role === 'Presidente' && presidents.length > 0) {
-        alert("🚨 Negado: Só pode haver um Presidente cadastrado!");
+        window.showToast("🚨 Negado: Só pode haver um Presidente cadastrado!", 'error');
         return;
     }
     
     const directors = allUsers?.filter(u => u.dept === dept && u.role === 'Diretor' && u.uid !== currentUser.uid) || [];
     if (role === 'Diretor' && directors.length > 0) {
-         alert(`🚨 Negado: Já existe um Diretor no departamento ${dept}!`);
+         window.showToast(`🚨 Negado: Já existe um Diretor no departamento ${dept}!`, 'error');
          return;
     }
     // ----------------------------
@@ -706,7 +726,7 @@ window.saveProfile = async () => {
         .eq('uid', currentUser.uid);
         
     if (updateError) {
-        alert("Erro ao salvar o perfil!");
+        window.showToast("Erro ao salvar o perfil!", 'error');
         console.error(updateError);
         return;
     }
@@ -715,7 +735,7 @@ window.saveProfile = async () => {
     currentUser.role = role;
     currentUser.dept = dept;
     
-    alert("Perfil Atualizado com sucesso!");
+    window.showToast("Perfil Atualizado com sucesso!", 'success');
     showDashboard(); // Recarrega header e redireciona para home
 }
 
@@ -775,9 +795,9 @@ window.deleteMember = async (uid) => {
         .eq('uid', uid);
         
     if (error) {
-        alert("Erro ao remover membro: " + error.message);
+        window.showToast("Erro ao remover membro: " + error.message, 'error');
     } else {
-        alert("Membro removido da EJ!");
+        window.showToast("Membro removido da EJ!", 'success');
         if (currentPage === 'membros') {
             renderMembros(document.getElementById('dashboard-content'));
         }
@@ -869,9 +889,9 @@ async function renderProjetos(container) {
                     .insert([{ name, description, status, value, deadline, created_by: currentUser.uid }]);
 
                 if (insertError) {
-                    alert("Erro ao criar projeto: " + insertError.message);
+                    window.showToast("Erro ao criar projeto: " + insertError.message, 'error');
                 } else {
-                    alert("Projeto criado com sucesso!");
+                    window.showToast("Projeto criado com sucesso!", 'success');
                     window.notifyDirectors('Novo Projeto 🌟', `O projeto "${name}" foi adicionado ao sistema!`);
                     window.notifyGlobalDirectors('Novo Projeto 🌟', `O projeto "${name}" foi adicionado ao sistema!`);
                     renderProjetos(container);
@@ -910,7 +930,7 @@ window.dropProject = async (e, newPhase) => {
 
     const { error } = await supabase.from('projects').update({ status: newPhase }).eq('id', projectId);
     
-    if (error) alert("Erro: " + error.message);
+    if (error) window.showToast("Erro: " + error.message, 'error');
     else {
         if(currentP && currentP.status !== newPhase) {
             window.notifyGlobalDirectors('Projeto Avançou', `O projeto "${currentP.name}" mudou para a fase: ${newPhase}`);
@@ -1083,9 +1103,9 @@ window.handleFinanceSubmit = async (type) => {
     const { error } = await supabase.from('transactions').insert([{ type, description, amount, date, category, created_by: currentUser.uid }]);
 
     if (error) {
-        alert("Erro ao registrar: " + error.message);
+        window.showToast("Erro ao registrar: " + error.message, 'error');
     } else {
-        alert(`${type} registrada com sucesso!`);
+        window.showToast(`${type} registrada com sucesso!`, 'success');
         
         // Notificação Global para Gastos
         if (type === 'Despesa') {
@@ -1169,7 +1189,7 @@ window.confirmReport = () => {
 
 window.imprimirRelatorio = (notes) => {
     const data = window.currentDashboardData;
-    if (!data) return alert("Erro ao carregar dados do relatório");
+    if (!data) return window.showToast("Erro ao carregar dados do relatório", 'error');
 
     const printWindow = window.open('', '_blank');
     const expenses = data.txs.filter(t => t.type === 'Despesa').sort((a,b) => b.amount - a.amount).slice(0, 5);
@@ -1244,7 +1264,7 @@ async function renderComercial(container) {
     const { data: leadsData, error } = await supabase.from('leads').select('*').order('created_at', { ascending: false });
     
     if (error) {
-        container.innerHTML = '<div class="card">Erro ao carregar os leads do banco.</div>';
+        container.innerHTML = window.renderSkeleton() + "<br><span style='color:red'>Erro no banco.</span>";
         console.error("Erro CRM:", error);
         return;
     }
@@ -1391,11 +1411,11 @@ async function renderComercial(container) {
         }]);
 
         if (insertError) {
-            alert("Erro ao cadastrar lead: " + insertError.message);
+            window.showToast("Erro ao cadastrar lead: " + insertError.message, 'error');
             submitBtn.innerText = "Cadastrar no Funil";
             submitBtn.disabled = false;
         } else {
-            alert("Lead cadastrado com sucesso!");
+            window.showToast("Lead cadastrado com sucesso!", 'success');
             const msgLead = `Um novo prospecto / lead (${name}) entrou no Funil de Vendas na etapa de Primeiro Contato.`;
             window.notifyGlobalDirectors('🚀 Novo Lead no Funil!', msgLead);
             window.closeLeadModal();
@@ -1413,7 +1433,7 @@ async function renderComercial(container) {
         if (!leadId) return;
 
         const { error } = await supabase.from('leads').update({ funnel_phase: newPhase }).eq('id', leadId);
-        if(error) alert("Erro ao mover lead: " + error.message);
+        if(error) window.showToast("Erro ao mover lead: " + error.message, 'error');
         else renderComercial(document.getElementById('dashboard-content'));
     }
     window.moveLeadMobile = (id, newPhase) => {
@@ -1578,12 +1598,12 @@ async function renderComercial(container) {
             const { error } = await supabase.from('leads').update({ funnel_data: fdata }).eq('id', id);
             if(error) throw error;
             
-            alert("Informações do funil salvas com sucesso!");
+            window.showToast("Informações do funil salvas com sucesso!", 'success');
             window.closeFunnelModal();
             renderComercial(document.getElementById('dashboard-content'));
         } catch (err) {
             console.error(err);
-            alert("Erro ao salvar: " + err.message);
+            window.showToast("Erro ao salvar: " + err.message, 'error');
         } finally {
             btn.innerText = 'Salvar Dados e Fechar';
             btn.disabled = false;
@@ -1777,9 +1797,9 @@ async function renderCalendario(container) {
             .insert([{ title, date, category, description }]);
 
         if (error) {
-            alert("Erro ao cadastrar evento: " + error.message);
+            window.showToast("Erro ao cadastrar evento: " + error.message, 'error');
         } else {
-            alert("Evento cadastrado com sucesso!");
+            window.showToast("Evento cadastrado com sucesso!", 'success');
             window.closeCalendarModal();
             renderCalendario(container); // Recarrega
         }
@@ -1793,14 +1813,14 @@ async function renderCalendario(container) {
             .delete()
             .eq('id', id);
 
-        if (error) alert("Erro ao excluir: " + error.message);
+        if (error) window.showToast("Erro ao excluir: " + error.message, 'error');
         else renderCalendario(container);
     }
 
     // Importar Iniciais
     window.importarIniciais = async () => {
         if (!confirm("Deseja importar os 61 eventos de backup para o Supabase?")) return;
-        if (typeof calendarEvents === 'undefined') { alert("Backup não encontrado."); return; }
+        if (typeof calendarEvents === 'undefined') { window.showToast("Backup não encontrado.", 'success'); return; }
 
         // Remove ID manual para deixar o Supabase gerar UUID se necessario
         const insertData = calendarEvents.map(({ id, ...rest }) => rest);
@@ -1810,9 +1830,9 @@ async function renderCalendario(container) {
             .insert(insertData);
 
         if (error) {
-            alert("Erro ao importar (Tabela criada?): " + error.message);
+            window.showToast("Erro ao importar (Tabela criada?, 'error'): " + error.message);
         } else {
-            alert("Importação realizada com sucesso!");
+            window.showToast("Importação realizada com sucesso!", 'success');
             renderCalendario(container);
         }
     }
@@ -1924,9 +1944,9 @@ async function renderFeedbacks(container) {
             .insert([{ type, content, author }]);
 
         if (error) {
-            alert("Erro ao enviar: " + error.message);
+            window.showToast("Erro ao enviar: " + error.message, 'error');
         } else {
-            alert("Enviado com sucesso!");
+            window.showToast("Enviado com sucesso!", 'success');
             
             // Gamificação: Feedback / Ideia
             if (!isAnon) {
@@ -1960,7 +1980,7 @@ async function renderFeedbacks(container) {
             .delete()
             .eq('id', id);
 
-        if (error) alert("Erro ao excluir: " + error.message);
+        if (error) window.showToast("Erro ao excluir: " + error.message, 'error');
         else renderFeedbacks(container);
     }
 }
@@ -2150,7 +2170,7 @@ async function renderDiretoria(container) {
         const { error } = await supabase.from('department_tasks').delete().eq('id', id);
         
         if (error) {
-            alert("Erro ao excluir demanda (Verifique as políticas RLS no Supabase): " + error.message);
+            window.showToast("Erro ao excluir demanda (Verifique as políticas RLS no Supabase, 'error'): " + error.message);
         } else {
             renderDiretoria(document.getElementById('dashboard-content'));
         }
@@ -2166,9 +2186,9 @@ async function renderDiretoria(container) {
             title, description, assigned_to, department: currentUser.dept, status: 'Nem comecei', created_by: currentUser.uid
         }]);
 
-        if (error) alert("Erro: " + error.message);
+        if (error) window.showToast("Erro: " + error.message, 'error');
         else {
-            alert("Demanda atribuída com sucesso!");
+            window.showToast("Demanda atribuída com sucesso!", 'success');
             
             // Gatilho 1: Notificação Direcionada
             const assignedUser = deptMembers.find(m => m.uid === assigned_to);
@@ -2236,7 +2256,7 @@ async function renderDiretoria(container) {
 
         const { error } = await supabase.from('department_tasks').update(updateData).eq('id', id);
         
-        if (error) alert("Erro ao atualizar status: " + error.message);
+        if (error) window.showToast("Erro ao atualizar status: " + error.message, 'error');
         else renderDiretoria(document.getElementById('dashboard-content'));
     }
 
@@ -2350,7 +2370,7 @@ window.dropTask = async (e, newStatus) => {
     }
 
     const { error } = await supabase.from('department_tasks').update(updateData).eq('id', taskId);
-    if (error) alert("Erro: " + error.message);
+    if (error) window.showToast("Erro: " + error.message, 'error');
     else loadContent(); // Recarrega a view atual (demandas)
 };
 
@@ -2368,9 +2388,9 @@ window.saveTaskNotes = async () => {
     const notes = document.getElementById('task-notes-input').value;
     const { error } = await supabase.from('department_tasks').update({ notes }).eq('id', editingTaskId);
     
-    if (error) alert("Erro ao salvar: " + error.message);
+    if (error) window.showToast("Erro ao salvar: " + error.message, 'error');
     else {
-        alert("Notas salvas!");
+        window.showToast("Notas salvas!", 'success');
         window.closeNotesModal();
         if (currentPage === 'demandas') renderMinhasDemandas(document.getElementById('dashboard-content'));
     }
